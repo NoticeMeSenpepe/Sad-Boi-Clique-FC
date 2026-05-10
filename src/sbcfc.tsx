@@ -7,7 +7,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 // @ts-nocheck
 import React from 'react';
-import { getPulseStats, getLiveFixtures, getLiveMembersByEaUser, getLiveNews, type LiveMemberStats } from './liveData';
+import { getPulseStats, getLiveFixtures, getLiveMembersByEaUser, getLiveNews, getLiveTransfers, type LiveMemberStats } from './liveData';
 import { useAuth } from './auth';
 
 /**
@@ -88,11 +88,13 @@ function relativeTime(iso: string): string {
   return `${y} year${y === 1 ? '' : 's'} ago`;
 }
 
-/** Module-level invalidation flag for live news. Admin CRUD bumps it so
- *  the next mount of a news-consuming page refetches instead of returning
- *  the same in-memory copy. */
+/** Module-level invalidation flags. Admin CRUD bumps the relevant key so
+ *  the next mount of a consumer page refetches instead of returning the
+ *  same in-memory copy. */
 let _liveNewsRefreshKey = 0;
 function invalidateLiveNews() { _liveNewsRefreshKey += 1; }
+let _liveTransfersRefreshKey = 0;
+function invalidateLiveTransfers() { _liveTransfersRefreshKey += 1; }
 
 /** Hook: returns the news article list. Falls back to the prototype's
  *  curated SORTED_NEWS / ALL_NEWS if the database has no rows yet, so
@@ -126,6 +128,40 @@ function useLiveNews(): any[] {
         author:    a.author ?? undefined,
         publishedAt: a.publishedAt,
       })));
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+  return items;
+}
+
+/** Hook: live transfers from the database. Falls back to a small mock list
+ *  if the table is empty so the page doesn't look broken pre-migration. */
+const TRANSFERS_FALLBACK: any[] = [
+  { id: 'mock-1', player: 'UNKNOWN SIGNING', club: 'CLASSIFIED FC', fee: 'UNDISCLOSED',
+    statusLabel: 'HERE WE GO ✓', panelColor: '#2a9d8f',
+    detail: 'Multiple sources confirm agreement in principle. Medicals booked. Nanna Tate personally approved the move. HERE WE GO.',
+    imageUrl: null, happenedAt: new Date().toISOString() },
+  { id: 'mock-2', player: 'GYMSKIN', club: 'SAD BOI CLIQUE FC', fee: 'LOYALTY',
+    statusLabel: 'CONTRACT EXTENDED', panelColor: '#9b5de5',
+    detail: 'Contract extension signed. New terms include guaranteed coffee at 95 degrees before every match. Non-negotiable clause.',
+    imageUrl: null, happenedAt: new Date(Date.now() - 86400000 * 3).toISOString() },
+  { id: 'mock-3', player: 'PANIKOVA', club: 'SAD BOI CLIQUE FC', fee: 'N/A',
+    statusLabel: 'DEVELOPING STORY', panelColor: '#E4002B',
+    detail: 'Several unnamed clubs have enquired. Panikova reportedly saw signs in a potted cactus. Investigation ongoing.',
+    imageUrl: null, happenedAt: new Date(Date.now() - 86400000 * 5).toISOString() },
+];
+
+function useLiveTransfers(): any[] {
+  const [items, setItems] = React.useState<any[]>(TRANSFERS_FALLBACK);
+  const refreshKey = _liveTransfersRefreshKey;
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const live = await getLiveTransfers();
+      if (cancelled) return;
+      if (live.length === 0) { setItems(TRANSFERS_FALLBACK); return; }
+      setItems(live);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2421,16 +2457,7 @@ const NewsArchiveView = ({ onBack, onOpen }) => {
 };
 const TransfersPage = () => {
   const [revealed, setRevealed] = React.useState({});
-  const transfers = [
-  { id: 1, player: 'UNKNOWN SIGNING', club: 'CLASSIFIED FC', fee: 'UNDISCLOSED', status: 'here_we_go', detail: 'Multiple sources confirm agreement in principle. Medicals booked. Nanna Tate personally approved the move. HERE WE GO.', color: '#2a9d8f' },
-  { id: 2, player: 'GYMSKIN', club: 'SAD BOI CLIQUE FC', fee: 'LOYALTY', status: 'renewed', detail: 'Contract extension signed. New terms include guaranteed coffee at 95 degrees before every match. Non-negotiable clause.', color: '#9b5de5' },
-  { id: 3, player: 'PANIKOVA', club: 'SAD BOI CLIQUE FC', fee: 'N/A', status: 'rumour', detail: 'Several unnamed clubs have enquired. Panikova reportedly saw signs in a potted cactus. Investigation ongoing.', color: 'var(--accent)' }];
-
-  const statusConfig = {
-    here_we_go: { label: 'HERE WE GO ✓', bg: '#2a9d8f' },
-    renewed: { label: 'CONTRACT EXTENDED', bg: '#9b5de5' },
-    rumour: { label: 'DEVELOPING STORY', bg: 'rgba(228,0,43,0.2)', text: 'var(--accent)' }
-  };
+  const transfers = useLiveTransfers();
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
@@ -2448,28 +2475,41 @@ const TransfersPage = () => {
       </div>
       <RainbowBar />
       <div style={{ padding: '40px 64px 64px' }}>
+        {transfers.length === 0 && (
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.55)', textAlign: 'center', padding: '40px 0' }}>
+            No transfer activity right now. The window is quiet. Suspiciously quiet.
+          </div>
+        )}
         {transfers.map((t) => {
-          const cfg = statusConfig[t.status];
           const isOpen = revealed[t.id];
+          const c = t.panelColor || '#E4002B';
           return (
-            <div key={t.id} className="sbc-glow-panel" style={{ '--panel-color': t.color, background: 'rgba(10,22,40,0.7)', border: `1px solid ${t.color}44`, borderRadius: 8, overflow: 'hidden', marginBottom: 14, borderLeft: `4px solid ${t.color}` }}>
-              <div style={{ padding: '18px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setRevealed((r) => ({ ...r, [t.id]: !r[t.id] }))}>
-                <div>
-                  <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.02em' }}>{t.player}</div>
-                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.4)', marginTop: 2 }}>{t.club} · FEE: {t.fee}</div>
+            <div key={t.id} className="sbc-glow-panel" style={{ '--panel-color': c, background: 'rgba(10,22,40,0.7)', border: `1px solid ${c}44`, borderRadius: 8, overflow: 'hidden', marginBottom: 14, borderLeft: `4px solid ${c}` }}>
+              <div style={{ padding: '18px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', gap: 16 }} onClick={() => setRevealed((r) => ({ ...r, [t.id]: !r[t.id] }))}>
+                {/* Left side — player photo (if any) + name + club */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 }}>
+                  {t.imageUrl && (
+                    <div style={{ width: 56, height: 56, borderRadius: '50%', overflow: 'hidden', border: `1px solid ${c}55`, background: 'rgba(8,15,30,0.6)', flexShrink: 0 }}>
+                      <img src={t.imageUrl} alt={t.player} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget).style.display = 'none'; }} />
+                    </div>
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.player}</div>
+                    <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.4)', marginTop: 2 }}>{t.club} · FEE: {t.fee}</div>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: cfg.text || '#fff', background: cfg.bg, padding: '5px 12px', borderRadius: 3, textTransform: 'uppercase' }}>{cfg.label}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
+                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: '#fff', background: c, padding: '5px 12px', borderRadius: 3, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{t.statusLabel}</div>
                   <div style={{ color: 'rgba(218,218,218,0.3)', fontSize: 10 }}>{isOpen ? '▲' : '▼'}</div>
                 </div>
               </div>
-              {isOpen &&
-              <div style={{ padding: '0 22px 18px', borderTop: `1px solid ${t.color}22` }}>
-                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.6)', lineHeight: 1.7, fontStyle: 'italic', marginTop: 14, borderLeft: `2px solid ${t.color}`, paddingLeft: 12 }}>{t.detail}</div>
+              {isOpen && (
+                <div style={{ padding: '0 22px 18px', borderTop: `1px solid ${c}22` }}>
+                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.7)', lineHeight: 1.7, fontStyle: 'italic', marginTop: 14, borderLeft: `2px solid ${c}`, paddingLeft: 12, whiteSpace: 'pre-wrap' }}>{t.detail}</div>
                 </div>
-              }
-            </div>);
-
+              )}
+            </div>
+          );
         })}
       </div>
     </div>);
@@ -3113,7 +3153,7 @@ const AdminPage = ({ setPage }) => {
   const tabs = [
     { id: 'invites',   label: 'Invite Codes',  ready: true  },
     { id: 'news',      label: 'News Articles', ready: true  },
-    { id: 'transfers', label: 'Transfers',     ready: false },
+    { id: 'transfers', label: 'Transfers',     ready: true  },
     { id: 'store',     label: 'Store Items',   ready: false },
     { id: 'players',   label: 'Player Lore',   ready: false },
   ];
@@ -3141,15 +3181,15 @@ const AdminPage = ({ setPage }) => {
           ))}
         </div>
 
-        {tab === 'invites' && <AdminInvitesPanel />}
-        {tab === 'news'    && <AdminNewsPanel />}
-        {tab !== 'invites' && tab !== 'news' && (
+        {tab === 'invites'   && <AdminInvitesPanel />}
+        {tab === 'news'      && <AdminNewsPanel />}
+        {tab === 'transfers' && <AdminTransfersPanel />}
+        {tab !== 'invites' && tab !== 'news' && tab !== 'transfers' && (
           <div style={{ background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '40px 28px', textAlign: 'center' }}>
             <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 8 }}>Coming soon</div>
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.7)', lineHeight: 1.6, maxWidth: 560, margin: '0 auto' }}>
-              {tab === 'transfers' && 'Register fictional signings / departures / loans. Each entry: player, type, fee, narrative.'}
-              {tab === 'store'     && 'Manage the merch catalogue — name, price, sizes, photos, sold-out flag, optional tag.'}
-              {tab === 'players'   && 'Edit the static parts of player profiles — archetype, lore, tags, accent colour, kit number. Live stats from EA stay untouched.'}
+              {tab === 'store'   && 'Manage the merch catalogue — name, price, sizes, photos, sold-out flag, optional tag.'}
+              {tab === 'players' && 'Edit the static parts of player profiles — archetype, lore, tags, accent colour, kit number. Live stats from EA stay untouched.'}
             </div>
           </div>
         )}
@@ -3590,6 +3630,239 @@ const Field = ({ label, required, children }) => (
     {children}
   </label>
 );
+
+// ── ADMIN: Transfers panel ──────────────────────────────────────
+const AdminTransfersPanel = () => {
+  const auth = useAuth();
+  const [rows, setRows]       = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr]         = React.useState(null);
+  const [busy, setBusy]       = React.useState(false);
+  const [editingId, setEditingId] = React.useState/* :null|'new'|number */(null);
+  const [uploading, setUploading] = React.useState(false);
+
+  const blankForm = {
+    player: '', club: '', fee: 'Undisclosed',
+    status_label: 'DEVELOPING STORY', panel_color: '#E4002B',
+    detail: '', image_url: '',
+    happened_at: new Date().toISOString().slice(0, 16),
+  };
+  const [form, setForm] = React.useState(blankForm);
+
+  const fetchRows = React.useCallback(async () => {
+    setLoading(true);
+    const sb = (await import('./supabase')).getSupabase();
+    if (!sb) { setErr('No backend connection.'); setLoading(false); return; }
+    const { data, error } = await sb
+      .from('transfers')
+      .select('id, happened_at, player, club, fee, status_label, panel_color, detail, image_url')
+      .order('happened_at', { ascending: false });
+    if (error) setErr(error.message);
+    setRows(data || []);
+    setLoading(false);
+  }, []);
+
+  React.useEffect(() => { fetchRows(); }, [fetchRows]);
+
+  const openNew = () => {
+    setForm({ ...blankForm, happened_at: new Date().toISOString().slice(0, 16) });
+    setEditingId('new');
+    setErr(null);
+  };
+
+  const openEdit = (row) => {
+    setForm({
+      player:       row.player ?? '',
+      club:         row.club ?? '',
+      fee:          row.fee ?? 'Undisclosed',
+      status_label: row.status_label ?? 'DEVELOPING STORY',
+      panel_color:  row.panel_color ?? '#E4002B',
+      detail:       row.detail ?? '',
+      image_url:    row.image_url ?? '',
+      happened_at:  row.happened_at ? new Date(row.happened_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
+    });
+    setEditingId(row.id);
+    setErr(null);
+  };
+
+  const cancelEdit = () => { setEditingId(null); setErr(null); };
+
+  const onUploadImage = async (file) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setErr('Image is over 5 MB — please pick a smaller one.'); return; }
+    setUploading(true); setErr(null);
+    try {
+      const sb = (await import('./supabase')).getSupabase();
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').toLowerCase();
+      const path = `${Date.now()}-${safe}`;
+      const { error: upErr } = await sb.storage.from('transfer-images').upload(path, file, { upsert: false, contentType: file.type });
+      if (upErr) { setErr(`Upload failed: ${upErr.message}`); return; }
+      const { data } = sb.storage.from('transfer-images').getPublicUrl(path);
+      setForm((f) => ({ ...f, image_url: data.publicUrl }));
+    } finally { setUploading(false); }
+  };
+
+  const save = async () => {
+    setErr(null);
+    if (!form.player.trim()) { setErr('Player is required.'); return; }
+    if (!form.club.trim())   { setErr('Club is required.'); return; }
+    setBusy(true);
+    const sb = (await import('./supabase')).getSupabase();
+    const payload = {
+      player:       form.player.trim(),
+      club:         form.club.trim(),
+      fee:          form.fee.trim() || 'Undisclosed',
+      status_label: form.status_label.trim() || 'DEVELOPING STORY',
+      panel_color:  form.panel_color.trim() || '#E4002B',
+      detail:       form.detail,
+      image_url:    form.image_url.trim() || null,
+      happened_at:  new Date(form.happened_at).toISOString(),
+    };
+    let error;
+    if (editingId === 'new') {
+      ({ error } = await sb.from('transfers').insert({ ...payload, created_by: auth.user?.id ?? null }));
+    } else {
+      ({ error } = await sb.from('transfers').update(payload).eq('id', editingId));
+    }
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    invalidateLiveTransfers();
+    setEditingId(null);
+    fetchRows();
+  };
+
+  const remove = async (row) => {
+    if (!confirm(`Delete transfer entry for "${row.player}"? This can't be undone.`)) return;
+    const sb = (await import('./supabase')).getSupabase();
+    const { error } = await sb.from('transfers').delete().eq('id', row.id);
+    if (error) { setErr(error.message); return; }
+    invalidateLiveTransfers();
+    fetchRows();
+  };
+
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  };
+
+  // Common status preset chips. Admins can still type whatever they want;
+  // these just save typing for typical entries.
+  const statusPresets = [
+    { label: 'HERE WE GO ✓',       color: '#2a9d8f' },
+    { label: 'AGREED',             color: '#2a9d8f' },
+    { label: 'CONTRACT EXTENDED',  color: '#9b5de5' },
+    { label: 'DEVELOPING STORY',   color: '#E4002B' },
+    { label: 'RUMOUR',             color: '#E4002B' },
+    { label: 'DEPARTED',           color: '#e76f51' },
+    { label: 'REJECTED',           color: '#e76f51' },
+    { label: 'LOAN',               color: '#f4a261' },
+    { label: 'ANNOUNCED',          color: '#00c8ff' },
+  ];
+
+  if (editingId !== null) {
+    return (
+      <div style={{ display: 'grid', gap: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{editingId === 'new' ? 'New transfer' : 'Edit transfer'}</div>
+          <button onClick={cancelEdit} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(218,218,218,0.65)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '8px 14px', borderRadius: 4, textTransform: 'uppercase' }}>← Back to list</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+          <Field label="Player" required>
+            <input type="text" placeholder="e.g. PANIKOVA" value={form.player} onChange={(e) => setForm({ ...form, player: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Club" required>
+            <input type="text" placeholder="e.g. CLASSIFIED FC" value={form.club} onChange={(e) => setForm({ ...form, club: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Fee">
+            <input type="text" placeholder="e.g. £10m / Free / Undisclosed / N/A" value={form.fee} onChange={(e) => setForm({ ...form, fee: e.target.value })} style={inputStyle} />
+          </Field>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+          <Field label="Status label">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="text" value={form.status_label} onChange={(e) => setForm({ ...form, status_label: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+              <select onChange={(e) => { const p = statusPresets[+e.target.value]; if (p) setForm({ ...form, status_label: p.label, panel_color: p.color }); e.target.selectedIndex = 0; }} style={{ ...inputStyle, width: 36, padding: '0 6px', cursor: 'pointer' }}>
+                <option value="">▼</option>
+                {statusPresets.map((p, i) => <option key={p.label} value={i}>{p.label}</option>)}
+              </select>
+            </div>
+          </Field>
+          <Field label="Accent colour (panel + chip)">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="color" value={form.panel_color} onChange={(e) => setForm({ ...form, panel_color: e.target.value })} style={{ width: 38, height: 38, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: 0, background: 'transparent', cursor: 'pointer' }} />
+              <input type="text" value={form.panel_color} onChange={(e) => setForm({ ...form, panel_color: e.target.value })} style={{ ...inputStyle, flex: 1, fontFamily: 'Roboto Mono, ui-monospace, monospace' }} />
+            </div>
+          </Field>
+          <Field label="Happened at">
+            <input type="datetime-local" value={form.happened_at} onChange={(e) => setForm({ ...form, happened_at: e.target.value })} style={inputStyle} />
+          </Field>
+        </div>
+
+        <Field label="Detail / narrative (line breaks become paragraphs)">
+          <textarea rows={6} value={form.detail} onChange={(e) => setForm({ ...form, detail: e.target.value })} style={{ ...inputStyle, fontFamily: 'Roboto, sans-serif', resize: 'vertical', lineHeight: 1.55 }} />
+        </Field>
+
+        <Field label="Player image (optional)">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="text" placeholder="Paste a URL/path, or click Upload →" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+            <label style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', cursor: uploading ? 'not-allowed' : 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', padding: '10px 14px', borderRadius: 4, textTransform: 'uppercase', whiteSpace: 'nowrap', opacity: uploading ? 0.5 : 1 }}>
+              {uploading ? 'Uploading…' : 'Upload'}
+              <input type="file" accept="image/*" disabled={uploading} onChange={(e) => { onUploadImage(e.target.files?.[0]); e.target.value = ''; }} style={{ display: 'none' }} />
+            </label>
+          </div>
+          {form.image_url && <div style={{ marginTop: 8 }}><img src={form.image_url} alt="" style={{ maxWidth: 220, maxHeight: 120, objectFit: 'cover', borderRadius: 4, border: '1px solid rgba(255,255,255,0.08)' }} onError={(e) => { (e.currentTarget).style.display = 'none'; }} /></div>}
+        </Field>
+
+        {err && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)' }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={cancelEdit} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(218,218,218,0.65)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '10px 16px', borderRadius: 4, textTransform: 'uppercase' }}>Cancel</button>
+          <button onClick={save} disabled={busy || !form.player.trim() || !form.club.trim()}
+                  style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.16em', padding: '10px 18px', borderRadius: 4, textTransform: 'uppercase', whiteSpace: 'nowrap', opacity: (busy || !form.player.trim() || !form.club.trim()) ? 0.5 : 1 }}>
+            {busy ? '…' : (editingId === 'new' ? 'Publish →' : 'Save changes →')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.6)' }}>{rows.length} transfer{rows.length === 1 ? '' : 's'} in the database.</div>
+        <button onClick={openNew} style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.16em', padding: '10px 18px', borderRadius: 4, textTransform: 'uppercase' }}>+ New transfer</button>
+      </div>
+      {err && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)' }}>{err}</div>}
+      <div style={{ background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.5fr 0.9fr 1.2fr 1.2fr 0.7fr', alignItems: 'center', padding: '10px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}>
+          {['Player','Club','Fee','Status','Date','Actions'].map((h, i) => (
+            <div key={i} style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>{h}</div>
+          ))}
+        </div>
+        {loading && <div style={{ padding: 20, fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>Loading…</div>}
+        {!loading && rows.length === 0 && (
+          <div style={{ padding: 20, fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>No transfers yet. The Transfers page is currently showing placeholder entries. Click "+ New transfer" to publish a real one.</div>
+        )}
+        {rows.map((r, i) => (
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.5fr 0.9fr 1.2fr 1.2fr 0.7fr', alignItems: 'center', padding: '12px 18px', borderBottom: i < rows.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.player}</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.club}</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.7)' }}>{r.fee}</div>
+            <div>
+              <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: '#fff', background: r.panel_color || 'var(--accent)', padding: '3px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{r.status_label}</span>
+            </div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.65)' }}>{fmtDate(r.happened_at)}</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => openEdit(r)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(218,218,218,0.8)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>Edit</button>
+              <button onClick={() => remove(r)} style={{ background: 'transparent', border: '1px solid rgba(228,0,43,0.4)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 
 // ── BASKET PAGE ─────────────────────────────────────────────────

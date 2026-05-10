@@ -559,6 +559,41 @@ export async function getLiveNews(): Promise<NewsArticle[]> {
   }));
 }
 
+// ── Transfers (admin-managed) ────────────────────────────────────────
+
+export interface TransferRow {
+  id: number | string;
+  happenedAt: string;
+  player: string;
+  club: string;
+  fee: string;
+  statusLabel: string;
+  panelColor: string;
+  detail: string;
+  imageUrl: string | null;
+}
+
+export async function getLiveTransfers(): Promise<TransferRow[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from('transfers')
+    .select('id, happened_at, player, club, fee, status_label, panel_color, detail, image_url')
+    .order('happened_at', { ascending: false });
+  if (error || !data) return [];
+  return data.map((r): TransferRow => ({
+    id: r.id as number,
+    happenedAt: r.happened_at as string,
+    player: (r.player as string) || '',
+    club: (r.club as string) || '',
+    fee: (r.fee as string) || 'Undisclosed',
+    statusLabel: (r.status_label as string) || 'DEVELOPING STORY',
+    panelColor: (r.panel_color as string) || '#E4002B',
+    detail: (r.detail as string) || '',
+    imageUrl: (r.image_url as string | null) ?? null,
+  }));
+}
+
 /** Latest scrape run timestamp + status, for an "as of …" footer. */
 export async function getScraperHealth(): Promise<{ ranAt: string; ok: boolean } | null> {
   const sb = getSupabase();
