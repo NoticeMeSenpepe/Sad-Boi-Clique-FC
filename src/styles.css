@@ -177,6 +177,10 @@ html.theme-light body { color: #020616; }
 /* Body & nav: cream */
 html.theme-light .sbc-nav,
 html.theme-light .sbc-mobile-menu { background: #f4f1ea !important; border-bottom-color: rgba(228,0,43,0.2) !important; }
+/* Burger bars are #eef2ff (off-white) by inline style — invisible against
+   the cream nav bar in light mode. Force the resting bars to accent red
+   so the icon is visible; the open-state bars already use --accent. */
+html.theme-light .sbc-burger span { background: var(--accent) !important; }
 html.theme-light .sbc-ticker-wrap { background: #f4f1ea !important; }
 html.theme-light .sbc-nav-links button { color: rgba(2,6,22,0.7) !important; }
 html.theme-light .sbc-nav-links button:hover { color: var(--accent) !important; }
@@ -208,7 +212,26 @@ html.theme-light [style*="color: #fff"]:not(.sbc-pulse *) {
   color: #020616 !important;
 }
 
-/* Mid-grey body text → readable navy */
+/* Article-view hero: the hero band is hardcoded dark (#020a18 + dark
+   gradient overlays) and stays dark in light mode, so the white-to-navy
+   rule above would paint the headline + meta navy on a dark background
+   = invisible. Keep them white here. The body content below the hero
+   still gets the global navy treatment for readability on cream bg. */
+html.theme-light .sbc-article-hero [style*="color: rgb(255, 255, 255)"],
+html.theme-light .sbc-article-hero [style*="color: #fff"] {
+  color: #fff !important;
+}
+html.theme-light .sbc-article-hero [style*="color: rgba(255, 255, 255"] {
+  color: rgba(255,255,255,0.85) !important;
+}
+
+/* Mid-grey body text → readable navy. Bumped destination opacity from
+   0.78 → 0.92 (user found 0.78 looked too washed-out / grey) and added
+   the 0.85 alpha to the source list so the article-summary paragraph
+   (rgba(218,218,218,0.85)) gets caught and converted instead of staying
+   near-white on the cream background. */
+html.theme-light [style*="color: rgba(218, 218, 218, 0.85)"],
+html.theme-light [style*="color: rgba(218, 218, 218, 0.8)"],
 html.theme-light [style*="color: rgba(218, 218, 218, 0.75)"],
 html.theme-light [style*="color: rgba(218, 218, 218, 0.7)"],
 html.theme-light [style*="color: rgba(218, 218, 218, 0.65)"],
@@ -227,7 +250,7 @@ html.theme-light [style*="color: rgba(255, 255, 255, 0.5)"],
 html.theme-light [style*="color: rgba(255, 255, 255, 0.45)"],
 html.theme-light [style*="color: rgba(255, 255, 255, 0.4)"],
 html.theme-light [style*="color: rgba(255, 255, 255, 0.35)"] {
-  color: rgba(2,6,22,0.78) !important;
+  color: rgba(2,6,22,0.92) !important;
 }
 
 /* Lighter grey text → still legible at 55% navy */

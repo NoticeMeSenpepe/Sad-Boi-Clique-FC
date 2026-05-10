@@ -1514,6 +1514,11 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
             const spotPlayers = (players || []).filter((p) => p.image);
             const [spIdx, setSpIdx] = React.useState(0);
             const [spHov, setSpHov] = React.useState(false);
+            // Touch tracking for the swipe gesture (mobile). The same handlers
+            // also let us suppress the panel's onClick when a real swipe
+            // happened (so swiping doesn't accidentally open the profile modal).
+            const spTouchStart = React.useRef(null);
+            const spSwiped = React.useRef(false);
             React.useEffect(() => {
               if (spHov) return;
               const iv = setInterval(() => setSpIdx((i) => (i + 1) % spotPlayers.length), 3800);
@@ -1522,6 +1527,23 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
             const sp = spotPlayers[spIdx];
             if (!sp) return null;
             const statKeys = sp.position === 'GK' ? ['DIV', 'HAN', 'REF'] : ['PAC', 'SHO', 'DRI'];
+            const onSpTouchStart = (e) => {
+              spTouchStart.current = e.touches[0]?.clientX ?? null;
+              spSwiped.current = false;
+            };
+            const onSpTouchEnd = (e) => {
+              if (spTouchStart.current == null || spotPlayers.length < 2) return;
+              const dx = (e.changedTouches[0]?.clientX ?? 0) - spTouchStart.current;
+              spTouchStart.current = null;
+              if (Math.abs(dx) < 40) return;     // ignore taps / micro-drags
+              spSwiped.current = true;
+              if (dx < 0) setSpIdx((i) => (i + 1) % spotPlayers.length);
+              else        setSpIdx((i) => (i - 1 + spotPlayers.length) % spotPlayers.length);
+            };
+            const onSpClick = () => {
+              if (spSwiped.current) { spSwiped.current = false; return; }
+              setSelectedPlayer(sp);
+            };
             return (
               <div className="sbc-hero-right" style={{ flex: '0 0 auto', width: 'clamp(360px, 26vw, 560px)', padding: '0 32px 0 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -1545,7 +1567,9 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
                   </div>
                 </div>
                 <div onMouseEnter={() => setSpHov(true)} onMouseLeave={() => setSpHov(false)}
-                onClick={() => setSelectedPlayer(sp)}
+                onClick={onSpClick}
+                onTouchStart={onSpTouchStart}
+                onTouchEnd={onSpTouchEnd}
                 className="sbc-glow-panel sbc-player-panel"
                 style={{ '--panel-color': sp.accentColor, position: 'relative', borderRadius: 8, overflow: 'hidden',
                   border: `1px solid ${sp.accentColor}55`,
