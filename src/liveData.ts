@@ -428,6 +428,23 @@ export async function getLiveFixtures(limit = 30): Promise<FixtureRow[]> {
       }
       // Highest in-game rating first matches what EA shows on the official site.
       list.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+
+      // EA's match payload sometimes flags MOTM via `mom: 1`, sometimes leaves
+      // every player at 0. If nobody on this side is flagged, derive MOTM as
+      // the player with the highest match rating; on a tie, prefer the player
+      // with the higher (goals * 0.6 + assists * 0.4) score.
+      const someoneFlagged = list.some((p) => p.isMotm);
+      if (!someoneFlagged && list.length > 0) {
+        const ranked = [...list].sort((a, b) => {
+          const r = (b.rating ?? 0) - (a.rating ?? 0);
+          if (r !== 0) return r;
+          return (b.goals * 0.6 + b.assists * 0.4) - (a.goals * 0.6 + a.assists * 0.4);
+        });
+        const winner = ranked[0]!;
+        const idx = list.findIndex((p) => p.name === winner.name);
+        if (idx !== -1) list[idx] = { ...list[idx]!, isMotm: true };
+      }
+
       return {
         clubId,
         name: pick(details, ['name', 'clubName'], str) ?? (clubId === SBC_CLUB_ID ? 'Sad Boi Clique' : 'UNKNOWN'),

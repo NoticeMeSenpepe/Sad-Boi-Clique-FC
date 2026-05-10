@@ -150,6 +150,22 @@ export const PLAYERS = [
 
 },
 {
+  // Sixth human-controlled player. eaUser matches the real EA Gamertag so live
+  // stats from member_state get merged in. Photo is the magazine-style portrait
+  // supplied by the user. Listed after the other humans, before the AI roster.
+  id: 'oldreliable', name: 'Old Reliable', shortName: 'OLD RELIABLE', number: 6, image: '/uploads/old-reliable.png', eaUser: 'Shmuelly',
+  position: 'CM', rating: 78, rarity: 'rare', nationality: '🌟',
+  goals: 0, apps: 0, assists: 0, cleanSheets: null,
+  stats: { PAC: 70, SHO: 65, PAS: 80, DRI: 72, DEF: 70, PHY: 74 },
+  tags: ['Steady', 'Quietly Effective', 'Always Available'],
+  accentColor: '#06d6a0', glowColor: 'rgba(6,214,160,0.4)',
+  archetype: 'The Glue',
+  lore: 'Holds the team together. Doesn\'t score, doesn\'t need to. Always exactly where the ball is going to be — or already moving the play before the ball arrives.',
+  timeline: [
+  { era: 'The Quiet Era', note: 'Low-key brilliant. The teammates know.' }],
+  role: 'CM'
+},
+{
   id: 'jimenez', name: 'Jimenez', shortName: 'JIMENEZ', number: 1,
   position: 'GK', rating: 78, rarity: 'common', nationality: 'ES',
   goals: 0, apps: 134, assists: 1, cleanSheets: 29,
@@ -247,22 +263,6 @@ export const PLAYERS = [
   archetype: 'The Exiled One',
   lore: 'Departed under circumstances that remain classified. The club has issued no statement. His shirt hangs in the changing room. Nobody has moved it.',
   timeline: [{ era: 'The Golden Era', note: '41 goals. Beloved. Everything was fine.' }, { era: 'The Incident', note: '[REDACTED BY CLUB LEGAL TEAM]' }, { era: 'The Exile', note: 'Location unknown. Number 99 retired. Then un-retired. Then retired again.' }]
-},
-{
-  // Sixth human-controlled player. eaUser matches the real EA Gamertag so live
-  // stats from member_state get merged in. Photo is the magazine-style portrait
-  // supplied by the user.
-  id: 'oldreliable', name: 'Old Reliable', shortName: 'OLD RELIABLE', number: 6, image: '/uploads/old-reliable.png', eaUser: 'Shmuelly',
-  position: 'CM', rating: 78, rarity: 'rare', nationality: '🌟',
-  goals: 0, apps: 0, assists: 0, cleanSheets: null,
-  stats: { PAC: 70, SHO: 65, PAS: 80, DRI: 72, DEF: 70, PHY: 74 },
-  tags: ['Steady', 'Quietly Effective', 'Always Available'],
-  accentColor: '#06d6a0', glowColor: 'rgba(6,214,160,0.4)',
-  archetype: 'The Glue',
-  lore: 'Holds the team together. Doesn\'t score, doesn\'t need to. Always exactly where the ball is going to be — or already moving the play before the ball arrives.',
-  timeline: [
-  { era: 'The Quiet Era', note: 'Low-key brilliant. The teammates know.' }],
-  role: 'CM'
 }];
 
 
@@ -1763,11 +1763,13 @@ const StatsPage = ({ setSelectedPlayer }) => {
 
 // ── MATCH REPORT (expanded view inside each fixture row) ───────────
 // Layout mirrors EA's official Pro Clubs match-report page:
-//   - Top: us name + score    score + opp name    "Days Ago: N"
+//   - Centered score above the stats table, with both clubs' crests on
+//     either side and "Days Ago: N" underneath.
 //   - Match-stats grid (Shots / Red Cards / Saves / Tackles / Passes)
 //   - Members section: switcher between the two clubs; each player row
 //     expands to show Assists / Tackles Made / Pass Attempts / Shots /
-//     Passes Made / Red Cards.
+//     Passes Made / Red Cards. SBCFC players are shown by their character
+//     name (Amir Panikova etc.) instead of their EA Gamertag.
 const MatchReport = ({ fixture }) => {
   const [side, setSide] = React.useState('us'); // 'us' | 'opp'
   const [expandedPlayer, setExpandedPlayer] = React.useState(null);
@@ -1782,54 +1784,87 @@ const MatchReport = ({ fixture }) => {
     { label: 'Passes',          us: aggUs.passesmade  ?? '—', opp: aggOpp.passesmade  ?? '—' },
   ];
 
-  const activeSide = side === 'us' ? fixture.us : fixture.opp;
+  const activeSide  = side === 'us' ? fixture.us : fixture.opp;
+  const isUsActive  = side === 'us';
   const switchTo = (s) => { setSide(s); setExpandedPlayer(null); };
 
-  // EA's official crest CDN — same URL pattern that ea.com itself uses.
-  const crestUrl = (crestId) =>
-    crestId ? `https://eafc24.content.easports.com/fifa/fltOnlineAssets/24B23FDE-7835-41C2-87A2-F453DFDB2E82/2024/fcweb/crests/256x256/l${crestId}.png` : null;
+  // Build a Gamertag → character-name lookup for our club only. Opposing
+  // teams stay as their raw EA names because we have no character mapping
+  // for them.
+  const usNameMap = React.useMemo(() => {
+    const m = new Map();
+    for (const p of PLAYERS) {
+      if (p.eaUser) m.set(String(p.eaUser).toLowerCase(), p.name);
+    }
+    return m;
+  }, []);
+  const displayName = (rawName, sideIsUs) =>
+    sideIsUs ? (usNameMap.get(String(rawName).toLowerCase()) || rawName) : rawName;
 
-  const Crest = ({ side: s, size = 56 }) => {
-    const [failed, setFailed] = React.useState(false);
-    const url = crestUrl(s.crestId);
-    const showImg = !!url && !failed;
-    const initials = (s.name || '?').slice(0, 1).toUpperCase();
+  // Crest visuals:
+  //   - For Sad Boi Clique we always use our locally-stored logo.
+  //   - For opposing clubs we never try to fetch a crest (the URL is fragile
+  //     and we'd need to bundle every club's image). Instead a soft blurred
+  //     circle with a "?" stands in.
+  const Crest = ({ side: s, size = 64 }) => {
+    if (s.clubId === '477926') {
+      return (
+        <img
+          src="/uploads/pasted-1777404204917-0.png"
+          alt={s.name}
+          style={{
+            width: size, height: size, borderRadius: '50%', objectFit: 'cover',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(228,0,43,0.3)',
+            flexShrink: 0,
+          }}
+        />
+      );
+    }
     return (
-      <div style={{ width: size, height: size, borderRadius: 6, overflow: 'hidden', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        {showImg ? (
-          <img src={url} alt={s.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-            onError={() => setFailed(true)} />
-        ) : (
-          <span style={{ fontFamily: 'Anton, sans-serif', fontSize: size * 0.42, color: 'rgba(218,218,218,0.55)' }}>{initials}</span>
-        )}
+      <div style={{
+        width: size, height: size, borderRadius: '50%',
+        background: 'radial-gradient(circle at 35% 30%, rgba(255,255,255,0.08), rgba(0,0,0,0.4) 70%)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backdropFilter: 'blur(6px)', flexShrink: 0,
+      }}>
+        <span style={{ fontFamily: 'Anton, sans-serif', fontSize: size * 0.42, color: 'rgba(218,218,218,0.45)', filter: 'blur(0.5px)' }}>?</span>
       </div>
     );
   };
 
   return (
-    <div onClick={(e) => e.stopPropagation()} style={{ padding: '20px 20px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-      {/* Header: clubs + score + days ago */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div onClick={(e) => e.stopPropagation()} style={{ padding: '24px 20px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+      {/* Header: crests on the sides, score centered, days ago underneath */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 24, justifyContent: 'center' }}>
+        {/* US side */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'flex-end', minWidth: 0 }}>
+          <div style={{ textAlign: 'right', minWidth: 0 }}>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textTransform: 'uppercase', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fixture.us.name}</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase', marginTop: 4 }}>HOME CLUB</div>
+          </div>
           <Crest side={fixture.us} />
-          <div>
-            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', textTransform: 'uppercase', lineHeight: 1 }}>{fixture.us.name}</div>
-            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase', marginTop: 4 }}>HOME / AWAY</div>
+        </div>
+
+        {/* Centered score block */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 44, color: '#fff', minWidth: 44, textAlign: 'center', lineHeight: 1 }}>{fixture.ourScore}</div>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 24, color: 'rgba(218,218,218,0.4)' }}>—</div>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 44, color: '#fff', minWidth: 44, textAlign: 'center', lineHeight: 1 }}>{fixture.theirScore}</div>
+          </div>
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.45)', textTransform: 'uppercase' }}>
+            {fixture.daysAgo === 0 ? 'TODAY' : fixture.daysAgo === 1 ? '1 DAY AGO' : `${fixture.daysAgo} DAYS AGO`}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '8px 16px', fontFamily: 'Anton, sans-serif', fontSize: 28, color: '#fff', minWidth: 44, textAlign: 'center' }}>{fixture.ourScore}</div>
-          <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '8px 16px', fontFamily: 'Anton, sans-serif', fontSize: 28, color: '#fff', minWidth: 44, textAlign: 'center' }}>{fixture.theirScore}</div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', textTransform: 'uppercase', lineHeight: 1 }}>{fixture.opp.name}</div>
+
+        {/* OPP side */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'flex-start', minWidth: 0 }}>
+          <Crest side={fixture.opp} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textTransform: 'uppercase', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fixture.opp.name}</div>
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase', marginTop: 4 }}>OPPONENT</div>
           </div>
-          <Crest side={fixture.opp} />
-        </div>
-        <div style={{ marginLeft: 'auto', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase' }}>
-          {fixture.daysAgo === 0 ? 'TODAY' : fixture.daysAgo === 1 ? '1 DAY AGO' : `${fixture.daysAgo} DAYS AGO`}
         </div>
       </div>
 
@@ -1886,7 +1921,7 @@ const MatchReport = ({ fixture }) => {
                   style={{ display: 'grid', gridTemplateColumns: '24px 2fr 1fr 1fr 1fr', alignItems: 'center', padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)', background: isExp ? 'rgba(228,0,43,0.06)' : 'transparent', transition: 'background 0.15s' }}>
                   <div style={{ color: 'rgba(218,218,218,0.5)', fontSize: 10 }}>{isExp ? '▼' : '▶'}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'none' }}>
-                    {p.name}
+                    {displayName(p.name, isUsActive)}
                     {p.isMotm && <span title="Man of the Match" style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.15em', color: '#e9c46a', background: 'rgba(233,196,106,0.12)', border: '1px solid rgba(233,196,106,0.3)', padding: '1px 6px', borderRadius: 2, textTransform: 'uppercase' }}>★ MOTM</span>}
                   </div>
                   <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.7)', textTransform: 'capitalize' }}>{p.position ?? '—'}</div>
