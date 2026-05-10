@@ -14,6 +14,7 @@ import {
   PlayerProfileModal,
 } from './sbcfc';
 import Landing from './Landing';
+import { useAuth } from './auth';
 
 const TWEAK_DEFAULTS = {
   accentColor: '#E4002B',
@@ -209,6 +210,44 @@ const App: React.FC = () => {
 
   useCustomCursor();
   usePageHeaderRotator();
+
+  // ── Auth-driven Tweaks sync ──────────────────────────────────────
+  // - When the user logs in and their profile carries saved tweaks,
+  //   apply those (overriding whatever was in localStorage). This is
+  //   how a user's accent / theme / glow follow them between devices.
+  // - When the user updates a tweak while logged in, push the new
+  //   value back to their profile (debounced so we don't spam writes
+  //   on every slider tick).
+  const auth = useAuth();
+  const lastSavedRef = React.useRef<string | null>(null);
+  const appliedFromServerRef = React.useRef<string | null>(null);
+
+  // On profile load: if tweaks are stored on the server, apply them locally.
+  React.useEffect(() => {
+    if (!auth.profile?.tweaks) return;
+    const serverJson = JSON.stringify(auth.profile.tweaks);
+    if (serverJson === appliedFromServerRef.current) return;
+    appliedFromServerRef.current = serverJson;
+    lastSavedRef.current = serverJson;
+    const parsed = auth.profile.tweaks as Partial<Tweaks>;
+    setTweaks((current) => ({
+      accentColor:    typeof parsed.accentColor   === 'string' ? parsed.accentColor   : current.accentColor,
+      glowIntensity:  typeof parsed.glowIntensity === 'number' ? parsed.glowIntensity : current.glowIntensity,
+      theme:          parsed.theme === 'light' ? 'light' : parsed.theme === 'dark' ? 'dark' : current.theme,
+    }));
+  }, [auth.profile?.tweaks]);
+
+  // On every tweak change (while logged in): debounce-save to profile.
+  React.useEffect(() => {
+    if (!auth.user) return;
+    const json = JSON.stringify(tweaks);
+    if (json === lastSavedRef.current) return;
+    const t = window.setTimeout(() => {
+      lastSavedRef.current = json;
+      auth.saveTweaks(tweaks);
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [tweaks, auth]);
 
   // Apply CSS variables + body bg whenever tweaks change; persist to localStorage.
   React.useEffect(() => {

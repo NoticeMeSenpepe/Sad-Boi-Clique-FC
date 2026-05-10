@@ -8,6 +8,7 @@
 // @ts-nocheck
 import React from 'react';
 import { getPulseStats, getLiveFixtures, getLiveMembersByEaUser, type LiveMemberStats } from './liveData';
+import { useAuth } from './auth';
 
 /**
  * Hook: returns the PLAYERS array with live EA stats merged in for every
@@ -2548,168 +2549,145 @@ const PreferencesTab = () => {
 
 // ── ACCOUNT PAGE ────────────────────────────────────────────────
 const AccountPage = ({ setPage }) => {
-  // Persisted account state — 'guest' | 'signup' | 'signin' | 'member'
-  const [authState, setAuthState] = React.useState(() => {
-    try { return localStorage.getItem('sbc_auth_state') || 'guest'; } catch (e) { return 'guest'; }
-  });
+  // Real Supabase-backed auth state. The mock localStorage gating is gone.
+  const auth = useAuth();
   const [tab, setTab] = React.useState('PROFILE');
-  const [signupStep, setSignupStep] = React.useState(1);
-  const [form, setForm] = React.useState({ name: '', email: '', password: '', favPlayer: '', tier: 'casual', sadnessLevel: 50, newsletter: true });
-
-  React.useEffect(() => { try { localStorage.setItem('sbc_auth_state', authState); } catch (e) {} }, [authState]);
-
+  const [signInForm, setSignInForm] = React.useState({ email: '', password: '' });
+  const [signUpForm, setSignUpForm] = React.useState({ email: '', password: '', displayName: '', inviteCode: '' });
+  const [signInError, setSignInError] = React.useState(null);
+  const [signUpError, setSignUpError] = React.useState(null);
+  const [signUpSuccess, setSignUpSuccess] = React.useState(null); // null | { needsConfirm: boolean, email: string }
+  const [busy, setBusy] = React.useState(false);
+  const [editingName, setEditingName] = React.useState(false);
+  const [draftName, setDraftName] = React.useState('');
   const tabs = ['PROFILE', 'BASKET', 'ORDERS', 'TICKETS', 'PREFERENCES'];
 
-  // ── GUEST: Sign in / Sign up choice ──
-  if (authState === 'guest') {
+  const handleSignIn = async (e) => {
+    e?.preventDefault?.();
+    setSignInError(null);
+    setBusy(true);
+    const { error } = await auth.signIn(signInForm.email, signInForm.password);
+    setBusy(false);
+    if (error) setSignInError(error);
+  };
+  const handleSignUp = async (e) => {
+    e?.preventDefault?.();
+    setSignUpError(null);
+    if (signUpForm.password.length < 6) { setSignUpError('Password must be at least 6 characters.'); return; }
+    if (!signUpForm.displayName.trim()) { setSignUpError('Please pick a display name.'); return; }
+    if (!signUpForm.inviteCode.trim()) { setSignUpError('You need an invite code to sign up.'); return; }
+    setBusy(true);
+    const { error, needsEmailConfirmation } = await auth.signUp(
+      signUpForm.email,
+      signUpForm.password,
+      signUpForm.displayName,
+      signUpForm.inviteCode,
+    );
+    setBusy(false);
+    if (error) { setSignUpError(error); return; }
+    setSignUpSuccess({ needsConfirm: needsEmailConfirmation, email: signUpForm.email });
+  };
+  const handleSaveName = async () => {
+    const { error } = await auth.updateDisplayName(draftName);
+    if (error) { alert(error); return; }
+    setEditingName(false);
+  };
+
+  const memberSinceLabel = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  };
+
+  // ── Guard: still loading the initial session ──
+  if (auth.loading) {
     return (
       <div style={{ background: 'transparent', minHeight: '100vh' }}>
-        <div className="sbc-page-header" style={{ position: 'relative', height: 220, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
-          <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-              <div style={{ width: 3, height: 18, background: 'var(--accent)' }} />
-              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.3em', color: 'var(--accent)', textTransform: 'uppercase' }}>Members Area</div>
+        <AccountPageHeader subtitle="Loading…" title="MEMBERS AREA" />
+        <RainbowBar />
+        <div style={{ padding: '64px', textAlign: 'center', color: 'rgba(218,218,218,0.5)', fontFamily: 'Roboto, sans-serif', fontSize: 13 }}>Checking your session…</div>
+      </div>
+    );
+  }
+
+  // ── Just signed up, awaiting email confirmation ──
+  if (!auth.user && signUpSuccess) {
+    return (
+      <div style={{ background: 'transparent', minHeight: '100vh' }}>
+        <AccountPageHeader subtitle="Almost in" title="CHECK YOUR EMAIL" />
+        <RainbowBar />
+        <div className="sbc-page-pad" style={{ padding: '64px 64px 96px', maxWidth: 640, margin: '0 auto' }}>
+          <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '28px 32px' }}>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 14 }}>One more step</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 14, color: 'rgba(218,218,218,0.75)', lineHeight: 1.6, marginBottom: 18 }}>
+              We've sent a confirmation link to <strong style={{ color: '#fff' }}>{signUpSuccess.email}</strong>. Click the link in that email to activate your account, then come back here and sign in.
             </div>
-            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 64, color: '#fff', lineHeight: 0.9, textTransform: 'uppercase', textShadow: '0 4px 40px rgba(0,0,0,0.6)' }}>JOIN THE CLIQUE</div>
+            <button onClick={() => { setSignUpSuccess(null); setSignUpForm({ email: '', password: '', displayName: '', inviteCode: '' }); }}
+                    style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.18em', padding: '12px 22px', borderRadius: 4, textTransform: 'uppercase' }}>Back to Sign In</button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // ── Not signed in: side-by-side sign-in / sign-up ──
+  if (!auth.user) {
+    return (
+      <div style={{ background: 'transparent', minHeight: '100vh' }}>
+        <AccountPageHeader subtitle="Members Area" title="JOIN THE CLIQUE" />
         <RainbowBar />
         <div className="sbc-page-pad" style={{ padding: '64px 64px 96px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, maxWidth: 980, margin: '0 auto' }}>
-          {/* Sign in card */}
-          <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '32px 32px 28px' }}>
+          {/* Sign in */}
+          <form onSubmit={handleSignIn} style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '32px 32px 28px' }}>
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'rgba(218,218,218,0.5)', marginBottom: 8, textTransform: 'uppercase' }}>Already initiated</div>
             <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 32, color: '#fff', textTransform: 'uppercase', marginBottom: 18, letterSpacing: '0.04em' }}>Sign In</div>
-            <input type="email" placeholder="Email" style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />
-            <input type="password" placeholder="Password" style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 18, boxSizing: 'border-box' }} />
-            <button onClick={() => setAuthState('member')} style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 14, letterSpacing: '0.18em', padding: '14px 0', borderRadius: 4, textTransform: 'uppercase' }}>SIGN IN →</button>
-            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.4)', marginTop: 12, textAlign: 'center' }}>Forgot password? Embrace the loss.</div>
-          </div>
-          {/* Sign up card */}
-          <div style={{ background: 'rgba(228,0,43,0.08)', border: '1px solid rgba(228,0,43,0.5)', borderRadius: 8, padding: '32px 32px 28px', position: 'relative' }}>
-            <div style={{ position: 'absolute', top: 0, right: 0, background: 'var(--accent)', color: '#fff', padding: '4px 10px', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', borderRadius: '0 8px 0 4px' }}>NEW</div>
-            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'var(--accent)', marginBottom: 8, textTransform: 'uppercase' }}>First time?</div>
+            <input type="email" placeholder="Email" required value={signInForm.email} onChange={(e) => setSignInForm({ ...signInForm, email: e.target.value })}
+                   style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />
+            <input type="password" placeholder="Password" required value={signInForm.password} onChange={(e) => setSignInForm({ ...signInForm, password: e.target.value })}
+                   style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 18, boxSizing: 'border-box' }} />
+            {signInError && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)', marginBottom: 12 }}>{signInError}</div>}
+            <button type="submit" disabled={busy} style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 14, letterSpacing: '0.18em', padding: '14px 0', borderRadius: 4, textTransform: 'uppercase', opacity: busy ? 0.6 : 1 }}>{busy ? '…' : 'SIGN IN →'}</button>
+          </form>
+
+          {/* Sign up — invite-only */}
+          <form onSubmit={handleSignUp} style={{ background: 'rgba(228,0,43,0.08)', border: '1px solid rgba(228,0,43,0.5)', borderRadius: 8, padding: '32px 32px 28px', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 0, right: 0, background: 'var(--accent)', color: '#fff', padding: '4px 10px', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', borderRadius: '0 8px 0 4px' }}>INVITE-ONLY</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'var(--accent)', marginBottom: 8, textTransform: 'uppercase' }}>Got a code?</div>
             <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 32, color: '#fff', textTransform: 'uppercase', marginBottom: 14, letterSpacing: '0.04em' }}>Create Account</div>
-            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.65)', lineHeight: 1.6, marginBottom: 22 }}>Join 47,000 fellow Sad Bois. Get match alerts, ticket priority, fern updates, and Panikova's coordinates (location data approximate).</div>
-            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {['Priority match-day tickets', 'Exclusive transfer rumour drops', 'Member-only kit drops', 'Aura calibration updates'].map((t) => (
-                <li key={t} style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'Roboto, sans-serif', fontSize: 12, color: '#fff' }}>
-                  <span style={{ color: 'var(--accent)', fontWeight: 700 }}>✓</span>{t}
-                </li>
-              ))}
-            </ul>
-            <button onClick={() => { setAuthState('signup'); setSignupStep(1); }} style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 14, letterSpacing: '0.18em', padding: '14px 0', borderRadius: 4, textTransform: 'uppercase' }}>EMBRACE SADNESS →</button>
-          </div>
+            <input type="text" placeholder="Display name" required value={signUpForm.displayName} onChange={(e) => setSignUpForm({ ...signUpForm, displayName: e.target.value })}
+                   style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />
+            <input type="email" placeholder="Email" required value={signUpForm.email} onChange={(e) => setSignUpForm({ ...signUpForm, email: e.target.value })}
+                   style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />
+            <input type="password" placeholder="Password (min 6 chars)" required value={signUpForm.password} onChange={(e) => setSignUpForm({ ...signUpForm, password: e.target.value })}
+                   style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />
+            <input type="text" placeholder="Invite code" required value={signUpForm.inviteCode} onChange={(e) => setSignUpForm({ ...signUpForm, inviteCode: e.target.value })}
+                   style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid var(--accent)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 16, boxSizing: 'border-box', letterSpacing: '0.05em' }} />
+            {signUpError && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)', marginBottom: 12 }}>{signUpError}</div>}
+            <button type="submit" disabled={busy} style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 14, letterSpacing: '0.18em', padding: '14px 0', borderRadius: 4, textTransform: 'uppercase', opacity: busy ? 0.6 : 1 }}>{busy ? '…' : 'EMBRACE SADNESS →'}</button>
+          </form>
         </div>
-      </div>);
+      </div>
+    );
   }
 
-  // ── SIGNUP: 3-step onboarding ──
-  if (authState === 'signup') {
-    const totalSteps = 3;
-    const stepLabels = ['Identity', 'Allegiance', 'Calibration'];
+  // ── Signed in but profile failed to load (edge case) ──
+  if (!auth.profile) {
     return (
       <div style={{ background: 'transparent', minHeight: '100vh' }}>
-        <div className="sbc-page-header" style={{ position: 'relative', height: 220, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
-          <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-              <div style={{ width: 3, height: 18, background: 'var(--accent)' }} />
-              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.3em', color: 'var(--accent)', textTransform: 'uppercase' }}>Step {signupStep} of {totalSteps} · {stepLabels[signupStep - 1]}</div>
-            </div>
-            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 56, color: '#fff', lineHeight: 0.9, textTransform: 'uppercase', textShadow: '0 4px 40px rgba(0,0,0,0.6)' }}>WELCOME, SAD BOI</div>
-          </div>
-        </div>
+        <AccountPageHeader subtitle="Hmm" title="PROFILE UNAVAILABLE" />
         <RainbowBar />
-        {/* Progress bar */}
-        <div style={{ display: 'flex', gap: 4, padding: '20px 64px 0', maxWidth: 720, margin: '0 auto', boxSizing: 'content-box' }}>
-          {[1, 2, 3].map((n) => (
-            <div key={n} style={{ flex: 1, height: 4, borderRadius: 2, background: n <= signupStep ? 'var(--accent)' : 'rgba(255,255,255,0.08)', transition: 'background 0.3s' }} />
-          ))}
+        <div className="sbc-page-pad" style={{ padding: '64px', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 14, color: 'rgba(218,218,218,0.7)', marginBottom: 18 }}>We couldn't find a profile for your account. Try signing out and in again.</div>
+          <button onClick={() => auth.signOut()} style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.18em', padding: '12px 22px', borderRadius: 4, textTransform: 'uppercase' }}>SIGN OUT</button>
         </div>
-
-        <div className="sbc-page-pad" style={{ padding: '32px 64px 96px', maxWidth: 720, margin: '0 auto' }}>
-          <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '36px 40px' }}>
-            {signupStep === 1 && (
-              <div>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 28, color: '#fff', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.04em' }}>Who are you?</div>
-                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.55)', marginBottom: 24, fontStyle: 'italic' }}>(Real-ish name optional. We'll never doxx you.)</div>
-                {[
-                  { key: 'name', label: 'DISPLAY NAME', placeholder: 'Sad Boi #2', type: 'text' },
-                  { key: 'email', label: 'EMAIL', placeholder: 'manager@sadboiclique.fc', type: 'email' },
-                  { key: 'password', label: 'PASSWORD', placeholder: '••••••••••', type: 'password' }
-                ].map((f) => (
-                  <div key={f.key} style={{ marginBottom: 16 }}>
-                    <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.22em', color: 'rgba(218,218,218,0.5)', marginBottom: 6, textTransform: 'uppercase' }}>{f.label}</div>
-                    <input type={f.type} placeholder={f.placeholder} value={form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, boxSizing: 'border-box' }} />
-                  </div>
-                ))}
-              </div>
-            )}
-            {signupStep === 2 && (
-              <div>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 28, color: '#fff', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.04em' }}>Pick your favourite</div>
-                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.55)', marginBottom: 24, fontStyle: 'italic' }}>(They will let you down. That's the point.)</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 22 }}>
-                  {['PANIKOVA', 'GYMSKIN', 'DONNY P', 'RICCIARDO', 'KARAVAVOV', 'JIMENEZ'].map((p) => (
-                    <button key={p} onClick={() => setForm({ ...form, favPlayer: p })} style={{ background: form.favPlayer === p ? 'rgba(228,0,43,0.18)' : 'rgba(8,15,30,0.6)', border: form.favPlayer === p ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.08)', borderRadius: 4, padding: '14px 8px', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 14, color: form.favPlayer === p ? 'var(--accent)' : '#fff', letterSpacing: '0.05em', textTransform: 'uppercase', transition: 'all 0.15s' }}>{p}</button>
-                  ))}
-                </div>
-                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.22em', color: 'rgba(218,218,218,0.5)', marginBottom: 10, textTransform: 'uppercase' }}>Loyalty Tier</div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {[['casual', 'CASUAL', '£0/mo'], ['cult', 'CULT MEMBER', '£8/mo'], ['lifer', 'LIFER', '£20/mo']].map(([val, lbl, price]) => (
-                    <button key={val} onClick={() => setForm({ ...form, tier: val })} style={{ flex: 1, background: form.tier === val ? 'rgba(228,0,43,0.18)' : 'rgba(8,15,30,0.6)', border: form.tier === val ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.08)', borderLeft: form.tier === val ? '3px solid var(--accent)' : '3px solid transparent', borderRadius: 4, padding: '14px 12px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}>
-                      <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: form.tier === val ? 'var(--accent)' : '#fff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>{lbl}</div>
-                      <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.5)', marginTop: 4 }}>{price}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {signupStep === 3 && (
-              <div>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 28, color: '#fff', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.04em' }}>Aura Calibration</div>
-                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.55)', marginBottom: 24, fontStyle: 'italic' }}>(This is mandatory and also legally non-binding.)</div>
-                <div style={{ marginBottom: 28 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.22em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>Sadness Level</span>
-                    <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: 'var(--accent)' }}>{form.sadnessLevel}%</span>
-                  </div>
-                  <input type="range" min="0" max="100" value={form.sadnessLevel} onChange={(e) => setForm({ ...form, sadnessLevel: +e.target.value })} style={{ width: '100%', accentColor: 'var(--accent)' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontFamily: 'Roboto, sans-serif', fontSize: 9, color: 'rgba(218,218,218,0.4)', letterSpacing: '0.18em', textTransform: 'uppercase' }}>
-                    <span>Stoic</span><span>Reasonable</span><span>Maxed</span>
-                  </div>
-                </div>
-                <div onClick={() => setForm({ ...form, newsletter: !form.newsletter })} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 4, cursor: 'pointer' }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 4, background: form.newsletter ? 'var(--accent)' : 'transparent', border: form.newsletter ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {form.newsletter && <span style={{ color: '#fff', fontSize: 14, lineHeight: 1 }}>✓</span>}
-                  </div>
-                  <div>
-                    <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: '#fff', fontWeight: 600 }}>Send me the weekly newsletter</div>
-                    <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.5)', marginTop: 2 }}>Mostly Panikova updates. Occasional fern photography.</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 32, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <button onClick={() => signupStep === 1 ? setAuthState('guest') : setSignupStep(signupStep - 1)} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(218,218,218,0.6)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontWeight: 700, fontSize: 11, letterSpacing: '0.15em', padding: '11px 20px', borderRadius: 3, textTransform: 'uppercase' }}>← {signupStep === 1 ? 'CANCEL' : 'BACK'}</button>
-              {signupStep < totalSteps ? (
-                <button onClick={() => setSignupStep(signupStep + 1)} style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.18em', padding: '12px 28px', borderRadius: 4, textTransform: 'uppercase' }}>NEXT →</button>
-              ) : (
-                <button onClick={() => setAuthState('member')} style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.18em', padding: '12px 28px', borderRadius: 4, textTransform: 'uppercase' }}>FINISH & EMBRACE ✓</button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>);
+      </div>
+    );
   }
 
-  // ── MEMBER: full account view (existing layout) ──
+  const profile = auth.profile;
+  const initials = (profile.display_name || 'SB').split(/\s+/).map((s) => s[0]).join('').slice(0, 2).toUpperCase() || 'SB';
+
+  // ── Signed in: full profile + parody tabs ──
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
@@ -2717,10 +2695,12 @@ const AccountPage = ({ setPage }) => {
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
         <div style={{ position: 'absolute', left: 64, bottom: 32, display: 'flex', alignItems: 'flex-end', gap: 20 }}>
-          <div style={{ width: 96, height: 96, borderRadius: '50%', background: 'rgba(228,0,43,0.15)', border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 48, color: 'var(--accent)' }}>SB</div>
+          <div style={{ width: 96, height: 96, borderRadius: '50%', background: 'rgba(228,0,43,0.15)', border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 40, color: 'var(--accent)' }}>{initials}</div>
           <div>
-            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'var(--accent)', marginBottom: 6, textTransform: 'uppercase' }}>Member since 2024 · Lifetime Sad Boi</div>
-            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 56, color: '#fff', lineHeight: 0.9, textTransform: 'uppercase', textShadow: '0 4px 40px rgba(0,0,0,0.6)' }}>SAD BOI #1</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'var(--accent)', marginBottom: 6, textTransform: 'uppercase' }}>
+              Member since {memberSinceLabel(profile.created_at)}{profile.is_admin ? ' · Admin' : ''}
+            </div>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 56, color: '#fff', lineHeight: 0.9, textTransform: 'uppercase', textShadow: '0 4px 40px rgba(0,0,0,0.6)' }}>{profile.display_name}</div>
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, fontWeight: 300, color: 'rgba(218,218,218,0.6)', marginTop: 6, fontStyle: 'italic' }}>"Welcome back, manager."</div>
           </div>
         </div>
@@ -2738,19 +2718,31 @@ const AccountPage = ({ setPage }) => {
       <div className="sbc-page-pad" style={{ padding: '40px 64px 64px' }}>
         {/* Sign-out (top-right) */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <button onClick={() => setAuthState('guest')} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(218,218,218,0.55)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontWeight: 700, fontSize: 10, letterSpacing: '0.18em', padding: '7px 14px', borderRadius: 3, textTransform: 'uppercase' }}>SIGN OUT</button>
+          <button onClick={() => auth.signOut()} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(218,218,218,0.55)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontWeight: 700, fontSize: 10, letterSpacing: '0.18em', padding: '7px 14px', borderRadius: 3, textTransform: 'uppercase' }}>SIGN OUT</button>
         </div>
         {tab === 'PROFILE' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
             <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '24px 28px' }}>
-              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 18, letterSpacing: '0.04em' }}>Manager Info</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Account</div>
+                {!editingName && (
+                  <button onClick={() => { setDraftName(profile.display_name); setEditingName(true); }}
+                          style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(218,218,218,0.7)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontWeight: 700, fontSize: 9, letterSpacing: '0.18em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>EDIT NAME</button>
+                )}
+              </div>
+              {editingName ? (
+                <div style={{ marginBottom: 14, display: 'flex', gap: 8 }}>
+                  <input type="text" value={draftName} onChange={(e) => setDraftName(e.target.value)}
+                         style={{ flex: 1, background: 'rgba(8,15,30,0.6)', border: '1px solid var(--accent)', borderRadius: 4, padding: '10px 12px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13 }} />
+                  <button onClick={handleSaveName} style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 12, letterSpacing: '0.14em', padding: '0 14px', borderRadius: 4, textTransform: 'uppercase' }}>Save</button>
+                  <button onClick={() => setEditingName(false)} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(218,218,218,0.55)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, padding: '0 12px', borderRadius: 4 }}>Cancel</button>
+                </div>
+              ) : null}
               {[
-                ['DISPLAY NAME', 'Sad Boi #1'],
-                ['EMAIL', 'manager@sadboiclique.fc'],
-                ['MEMBER SINCE', 'September 2024'],
-                ['FAVOURITE PLAYER', 'Panikova'],
-                ['HOME GROUND', 'LNER Stadium, Lincoln'],
-                ['LOYALTY TIER', 'CULT MEMBER · TIER III']
+                ['DISPLAY NAME', profile.display_name],
+                ['EMAIL', auth.user.email],
+                ['MEMBER SINCE', memberSinceLabel(profile.created_at)],
+                ['ROLE', profile.is_admin ? 'ADMIN' : 'MEMBER'],
               ].map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.45)', textTransform: 'uppercase' }}>{k}</span>
@@ -2759,7 +2751,7 @@ const AccountPage = ({ setPage }) => {
               ))}
             </div>
             <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '24px 28px' }}>
-              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 18, letterSpacing: '0.04em' }}>Season Stats</div>
+              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 18, letterSpacing: '0.04em' }}>Sad Boi Stats</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 {[
                   ['MATCHES ATTENDED', '14'],
@@ -2829,6 +2821,23 @@ const AccountPage = ({ setPage }) => {
     </div>
   );
 };
+
+/** Reusable header band for the AccountPage's various states. */
+const AccountPageHeader = ({ subtitle, title }) => (
+  <div className="sbc-page-header" style={{ position: 'relative', height: 220, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
+    <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
+    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
+    <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <div style={{ width: 3, height: 18, background: 'var(--accent)' }} />
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.3em', color: 'var(--accent)', textTransform: 'uppercase' }}>{subtitle}</div>
+      </div>
+      <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 64, color: '#fff', lineHeight: 0.9, textTransform: 'uppercase', textShadow: '0 4px 40px rgba(0,0,0,0.6)' }}>{title}</div>
+    </div>
+  </div>
+);
+
 
 // ── BASKET PAGE ─────────────────────────────────────────────────
 const BasketPage = ({ setPage }) => {
