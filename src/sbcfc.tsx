@@ -1336,17 +1336,27 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
                 display: '-webkit-box', WebkitLineClamp: 2 as any, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
               }}>{h.sub}</div>
               {h.image && (
-                <div className="sbc-hero-news-image" style={{
-                  width: '100%', maxWidth: 560, aspectRatio: '16 / 9',
-                  borderRadius: 6, overflow: 'hidden',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
-                }}>
+                <div
+                  className="sbc-hero-news-image sbc-glow-panel"
+                  // Reuse the site's accent-colored panel pattern: --panel-color
+                  // drives both the border and the on-hover glow via the
+                  // existing .sbc-glow-panel CSS rules. Black background fills
+                  // the letterbox bands when objectFit:contain leaves space.
+                  style={{
+                    '--panel-color': h.color,
+                    width: '100%', maxWidth: 560, aspectRatio: '16 / 9',
+                    borderRadius: 6, overflow: 'hidden',
+                    border: `1px solid ${h.color}`,
+                    background: '#030810',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+                    transition: 'box-shadow 0.3s, transform 0.3s',
+                  } as any}
+                >
                   <img
                     src={h.image}
                     alt={h.text}
                     onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                   />
                 </div>
               )}
@@ -1959,6 +1969,18 @@ const StatsPage = ({ setSelectedPlayer }) => {
   const [sortKey, setSortKey] = React.useState('overall');
   const [sortDir, setSortDir] = React.useState('desc');
   const [posGroup, setPosGroup] = React.useState('ALL');
+  // Below 820px (the site-wide mobile breakpoint) the 11-column table is
+  // unreadable — switch to a card-per-player layout instead. Tracked via
+  // matchMedia so it updates on resize and stays in sync with the CSS.
+  const [isMobile, setIsMobile] = React.useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 820px)').matches
+  );
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width: 820px)');
+    const onChange = (e) => setIsMobile(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   // Flatten the merged player + EA-live record into a single row shape that
   // the table reads. AI characters have no `liveStats`; their EA-only
@@ -2080,84 +2102,181 @@ const StatsPage = ({ setSelectedPlayer }) => {
           </div>
         </div>
 
-        {/* Table */}
-        <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(30,60,120,0.35)', borderRadius: 8, overflow: 'hidden' }}>
-          {/* Header row */}
-          <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center', padding: '12px 20px', borderBottom: '1px solid rgba(30,60,120,0.5)', background: 'rgba(0,0,0,0.25)' }}>
-            {columns.map((c) => {
-              const active = sortKey === c.key;
+        {/* Sort selector — only shown on mobile, where the table headers
+            (which double as sort triggers on desktop) aren't visible. */}
+        {isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>Sort by</div>
+            <select
+              value={sortKey}
+              onChange={(e) => { setSortKey(e.target.value); setSortDir(e.target.value === 'name' || e.target.value === 'position' ? 'asc' : 'desc'); }}
+              style={{
+                background: 'rgba(8,15,30,0.8)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff',
+                fontFamily: 'Anton, sans-serif', fontSize: 12, letterSpacing: '0.1em',
+                padding: '8px 10px', borderRadius: 4, cursor: 'pointer', textTransform: 'uppercase',
+              }}
+            >
+              {columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+            </select>
+            <button
+              onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+              style={{
+                background: 'rgba(228,0,43,0.18)', border: '1px solid var(--accent)', color: '#fff',
+                fontFamily: 'Anton, sans-serif', fontSize: 12, letterSpacing: '0.1em',
+                padding: '8px 14px', borderRadius: 4, cursor: 'pointer', textTransform: 'uppercase',
+              }}
+            >{sortDir === 'asc' ? '▲ ASC' : '▼ DESC'}</button>
+          </div>
+        )}
+
+        {/* DESKTOP: full 11-column sortable table */}
+        {!isMobile && (
+          <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(30,60,120,0.35)', borderRadius: 8, overflow: 'hidden' }}>
+            {/* Header row */}
+            <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center', padding: '12px 20px', borderBottom: '1px solid rgba(30,60,120,0.5)', background: 'rgba(0,0,0,0.25)' }}>
+              {columns.map((c) => {
+                const active = sortKey === c.key;
+                return (
+                  <button
+                    key={c.key}
+                    onClick={() => onHeaderClick(c.key)}
+                    title={c.tip}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em',
+                      color: active ? 'var(--accent)' : 'rgba(218,218,218,0.55)',
+                      textAlign: c.align, textTransform: 'uppercase', padding: 0,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: c.align === 'left' ? 'flex-start' : 'center', gap: 4,
+                    }}
+                  >
+                    <span>{c.label}</span>
+                    {active && <span style={{ fontSize: 10, lineHeight: 1 }}>{sortDir === 'asc' ? '▲' : '▼'}</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Body rows */}
+            {sorted.length === 0 && (
+              <div style={{ padding: 28, textAlign: 'center', fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>
+                No players match this filter.
+              </div>
+            )}
+            {sorted.map((r, i) => {
+              const p = r.player;
+              const accent = p.accentColor;
               return (
-                <button
-                  key={c.key}
-                  onClick={() => onHeaderClick(c.key)}
-                  title={c.tip}
+                <div
+                  key={p.id}
+                  onClick={() => setSelectedPlayer(p)}
                   style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em',
-                    color: active ? 'var(--accent)' : 'rgba(218,218,218,0.55)',
-                    textAlign: c.align, textTransform: 'uppercase', padding: 0,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: c.align === 'left' ? 'flex-start' : 'center', gap: 4,
+                    display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center',
+                    padding: '10px 20px',
+                    borderBottom: i < sorted.length - 1 ? '1px solid rgba(30,60,120,0.15)' : 'none',
+                    cursor: 'pointer', transition: 'background 0.15s',
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = `${accent}0d`; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  <span>{c.label}</span>
-                  {active && <span style={{ fontSize: 10, lineHeight: 1 }}>{sortDir === 'asc' ? '▲' : '▼'}</span>}
-                </button>
+                  {/* Player cell — avatar + name + (live/AI) badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    {p.image
+                      ? <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: `2px solid ${accent}55`, flexShrink: 0 }}><img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} alt={p.name} /></div>
+                      : <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${accent}22`, border: `2px solid ${accent}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 13, color: accent, flexShrink: 0 }}>{p.number}</div>
+                    }
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+                      <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: p.isLive ? '#06d6a0' : 'rgba(218,218,218,0.4)' }}>
+                        {p.isLive ? 'LIVE EA' : (p.eaUser ? 'AWAITING SCRAPE' : 'AI')}
+                      </div>
+                    </div>
+                  </div>
+                  {/* All other columns rendered from the columns[] config */}
+                  {columns.slice(1).map((c) => (
+                    <div key={c.key} style={{
+                      fontFamily: c.key === 'overall' ? 'Anton, sans-serif' : 'Roboto, sans-serif',
+                      fontSize: c.key === 'overall' ? 17 : 12,
+                      fontWeight: c.key === 'overall' ? 400 : 600,
+                      color: sortKey === c.key ? accent : '#fff',
+                      textAlign: c.align as any,
+                      letterSpacing: '0.04em',
+                    }}>
+                      {cellText(r, c.key)}
+                    </div>
+                  ))}
+                </div>
               );
             })}
           </div>
+        )}
 
-          {/* Body rows */}
-          {sorted.length === 0 && (
-            <div style={{ padding: 28, textAlign: 'center', fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>
-              No players match this filter.
-            </div>
-          )}
-          {sorted.map((r, i) => {
-            const p = r.player;
-            const accent = p.accentColor;
-            return (
-              <div
-                key={p.id}
-                onClick={() => setSelectedPlayer(p)}
-                style={{
-                  display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center',
-                  padding: '10px 20px',
-                  borderBottom: i < sorted.length - 1 ? '1px solid rgba(30,60,120,0.15)' : 'none',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = `${accent}0d`; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                {/* Player cell — avatar + name + (live/AI) badge */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                  {p.image
-                    ? <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: `2px solid ${accent}55`, flexShrink: 0 }}><img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} alt={p.name} /></div>
-                    : <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${accent}22`, border: `2px solid ${accent}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 13, color: accent, flexShrink: 0 }}>{p.number}</div>
-                  }
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
-                    <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: p.isLive ? '#06d6a0' : 'rgba(218,218,218,0.4)' }}>
-                      {p.isLive ? 'LIVE EA' : (p.eaUser ? 'AWAITING SCRAPE' : 'AI')}
+        {/* MOBILE: card per player. Same data, readable layout, big tap
+            targets. Stats render as a 3-column grid inside each card so
+            the numbers don't bunch up. Sort + filter still apply. */}
+        {isMobile && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {sorted.length === 0 && (
+              <div style={{ padding: 28, textAlign: 'center', fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)', background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(30,60,120,0.35)', borderRadius: 8 }}>
+                No players match this filter.
+              </div>
+            )}
+            {sorted.map((r) => {
+              const p = r.player;
+              const accent = p.accentColor;
+              // Skip Player, POS, and OVR — those three are already in the
+              // card header (avatar + name, position chip, big OVR number).
+              const cardStats = columns.slice(3);
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => setSelectedPlayer(p)}
+                  style={{
+                    background: 'rgba(10,22,40,0.85)',
+                    border: `1px solid ${accent}55`,
+                    borderLeft: `4px solid ${accent}`,
+                    borderRadius: 8,
+                    padding: 14,
+                    cursor: 'pointer',
+                    display: 'flex', flexDirection: 'column', gap: 12,
+                  }}
+                >
+                  {/* Header row: avatar, name, live/AI badge + position */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {p.image
+                      ? <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', border: `2px solid ${accent}`, flexShrink: 0 }}><img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} alt={p.name} /></div>
+                      : <div style={{ width: 48, height: 48, borderRadius: '50%', background: `${accent}22`, border: `2px solid ${accent}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 18, color: accent, flexShrink: 0 }}>{p.number}</div>
+                    }
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textTransform: 'uppercase', lineHeight: 1.05 }}>{r.name}</div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 3 }}>
+                        <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: '#fff', background: `${accent}33`, border: `1px solid ${accent}77`, padding: '2px 7px', borderRadius: 3 }}>{r.position}</span>
+                        <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: p.isLive ? '#06d6a0' : 'rgba(218,218,218,0.4)' }}>
+                          {p.isLive ? 'LIVE EA' : (p.eaUser ? 'AWAITING' : 'AI')}
+                        </span>
+                      </div>
+                    </div>
+                    {/* Big OVR */}
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 32, color: accent, lineHeight: 1 }}>{cellText(r, 'overall')}</div>
+                      <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.5)' }}>OVERALL</div>
                     </div>
                   </div>
-                </div>
-                {/* All other columns rendered from the columns[] config */}
-                {columns.slice(1).map((c) => (
-                  <div key={c.key} style={{
-                    fontFamily: c.key === 'overall' ? 'Anton, sans-serif' : 'Roboto, sans-serif',
-                    fontSize: c.key === 'overall' ? 17 : 12,
-                    fontWeight: c.key === 'overall' ? 400 : 600,
-                    color: sortKey === c.key ? accent : '#fff',
-                    textAlign: c.align as any,
-                    letterSpacing: '0.04em',
-                  }}>
-                    {cellText(r, c.key)}
+                  {/* Stats grid: each stat as a label + value pair. 3 cols
+                      reads cleanly on a phone without the bunching the
+                      11-col table caused. */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                    {cardStats.map((c) => (
+                      <div key={c.key} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 4, padding: '8px 10px', textAlign: 'center' }}>
+                        <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: sortKey === c.key ? accent : '#fff', lineHeight: 1 }}>{cellText(r, c.key)}</div>
+                        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(218,218,218,0.5)', marginTop: 3 }}>{c.label}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Footer note */}
         <div style={{ marginTop: 12, fontFamily: 'Roboto, sans-serif', fontSize: 10, color: 'rgba(218,218,218,0.45)', lineHeight: 1.6 }}>

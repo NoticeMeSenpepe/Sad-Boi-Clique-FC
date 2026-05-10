@@ -79,10 +79,13 @@ a, button, [role="button"] { cursor: none; }
 
 /* ── Responsive: tablet & mobile ───────────────── */
 @media (max-width: 1100px) {
-  /* Sponsor stays visible but shrinks so it doesn't crowd the nav links. */
-  .sbc-nav-sponsor    { font-size: 9px !important; }
+  /* Sponsor stays visible at all widths — same three-line content as desktop,
+     just scaled down to fit alongside the nav links / burger. The three
+     existing colour classes (.sbc-sponsor-label / -name / -tag) keep their
+     desktop colours, including in light mode. */
+  .sbc-nav-sponsor    { font-size: 9px !important; line-height: 1.25 !important; }
   .sbc-sponsor-name   { font-size: 10px !important; }
-  .sbc-sponsor-tag    { display: none !important; }
+  .sbc-sponsor-tag    { font-size: 8px !important; }
   .sbc-nav-links button { font-size: 11px !important; padding: 8px 8px !important; }
 }
 @media (max-width: 820px) {
@@ -92,10 +95,13 @@ a, button, [role="button"] { cursor: none; }
 
   .sbc-nav-links { display: none !important; }
   .sbc-burger { display: flex !important; }
-  /* Tighter sponsor in mobile bar (sat between logo and burger). */
-  .sbc-nav-sponsor    { font-size: 8px !important; line-height: 1.15 !important; max-width: 110px; }
-  .sbc-sponsor-label  { display: none !important; }
+  /* Mobile sponsor: keep all three lines; size is the smallest readable on
+     phones. Sits between logo and burger; max-width prevents overflow on
+     narrow screens. */
+  .sbc-nav-sponsor    { font-size: 8px !important; line-height: 1.2 !important; max-width: 120px; }
+  .sbc-sponsor-label  { font-size: 7px !important; }
   .sbc-sponsor-name   { font-size: 9px !important; }
+  .sbc-sponsor-tag    { font-size: 7px !important; }
 
   /* Stack hero + reduce padding */
   .sbc-hero-row { flex-direction: column !important; height: auto !important; padding: 24px 0 !important; gap: 28px !important; }
