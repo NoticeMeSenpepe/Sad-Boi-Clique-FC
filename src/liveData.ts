@@ -428,22 +428,11 @@ export async function getLiveFixtures(limit = 30): Promise<FixtureRow[]> {
       }
       // Highest in-game rating first matches what EA shows on the official site.
       list.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-
-      // EA's match payload sometimes flags MOTM via `mom: 1`, sometimes leaves
-      // every player at 0. If nobody on this side is flagged, derive MOTM as
-      // the player with the highest match rating; on a tie, prefer the player
-      // with the higher (goals * 0.6 + assists * 0.4) score.
-      const someoneFlagged = list.some((p) => p.isMotm);
-      if (!someoneFlagged && list.length > 0) {
-        const ranked = [...list].sort((a, b) => {
-          const r = (b.rating ?? 0) - (a.rating ?? 0);
-          if (r !== 0) return r;
-          return (b.goals * 0.6 + b.assists * 0.4) - (a.goals * 0.6 + a.assists * 0.4);
-        });
-        const winner = ranked[0]!;
-        const idx = list.findIndex((p) => p.name === winner.name);
-        if (idx !== -1) list[idx] = { ...list[idx]!, isMotm: true };
-      }
+      // MOTM is decided AFTER both sides are built (we need to know the score
+      // first — only the winning team gets a MOTM badge). All players start
+      // with isMotm false from the per-player parse above; the winning side's
+      // MOTM is set in the post-processing block below.
+      list.forEach((p, i) => { list[i] = { ...p, isMotm: false }; });
 
       return {
         clubId,
@@ -458,7 +447,46 @@ export async function getLiveFixtures(limit = 30): Promise<FixtureRow[]> {
     const usSide  = buildSide(SBC_CLUB_ID, us,   ourScore);
     const oppSide = buildSide(oppId, them, theirScore);
 
-    // Scorers / MOTM derived from our side, for the collapsed-row chips.
+    // ── MOTM rule: only awarded on the winning side ──────────────────
+    // EA's payload sometimes flags MOTM with `mom: 1` for any player,
+    // including on losing sides. Per user spec, MOTM is a winners-only
+    // honour: no MOTM in a draw, no MOTM for the team that lost.
+    //
+    // To pick the winning side's MOTM:
+    //   1. Look at the player records as they came back from EA. If any
+    //      one player has the `mom` flag, that's our MOTM.
+    //   2. Otherwise, fall back to the highest match rating, with
+    //      (goals * 0.6 + assists * 0.4) as the tiebreaker.
+    const winnerSide: ClubMatchSide | null =
+      ourScore > theirScore ? usSide :
+      theirScore > ourScore ? oppSide : null;
+
+    if (winnerSide && winnerSide.players.length > 0) {
+      // Re-read EA's `mom` flag from the raw players blob for this side, so
+      // we can honour it even though we cleared isMotm in buildSide.
+      const rawPlayers = (blob.players || {}) as Record<string, Record<string, Record<string, unknown>>>;
+      const sidePlayersRaw = rawPlayers[winnerSide.clubId] || {};
+      let chosenName: string | null = null;
+      for (const p of Object.values(sidePlayersRaw)) {
+        if (num(p['mom']) === 1) {
+          chosenName = pick(p, ['playername'], str);
+          if (chosenName) break;
+        }
+      }
+      if (!chosenName) {
+        const ranked = [...winnerSide.players].sort((a, b) => {
+          const r = (b.rating ?? 0) - (a.rating ?? 0);
+          if (r !== 0) return r;
+          return (b.goals * 0.6 + b.assists * 0.4) - (a.goals * 0.6 + a.assists * 0.4);
+        });
+        chosenName = ranked[0]!.name;
+      }
+      const idx = winnerSide.players.findIndex((p) => p.name === chosenName);
+      if (idx !== -1) winnerSide.players[idx] = { ...winnerSide.players[idx]!, isMotm: true };
+    }
+
+    // Scorers / MOTM-name for the collapsed-row chips: only ever from our
+    // side (the chip is a parody of "our team's man of the match").
     const scorers = usSide.players
       .filter((p) => p.goals > 0)
       .map((p) => ({ name: p.name, goals: p.goals }))

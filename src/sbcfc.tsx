@@ -1554,7 +1554,7 @@ const SquadPage = ({ setSelectedPlayer }) => {
     <div style={{ minHeight: '100vh', background: 'transparent' }}>
       {/* Hero banner */}
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-        <div className="sbc-page-header-bg" style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+        <div className="sbc-page-header-bg" style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div className="sbc-page-header-sheen" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
         <div style={{ position: 'absolute', left: 64, bottom: 32 }}>
@@ -1657,7 +1657,7 @@ const StatsPage = ({ setSelectedPlayer }) => {
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       {/* HEADER */}
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
         <div style={{ position: 'absolute', left: 64, bottom: 32 }}>
@@ -1985,7 +1985,7 @@ const FixturesPage = () => {
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
         <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px', zIndex: 1 }}>
@@ -2115,7 +2115,7 @@ const NewsPage = () => {
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
         <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px', zIndex: 1 }}>
@@ -2246,7 +2246,7 @@ const NewsArchiveView = ({ onBack, onOpen }) => {
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 220, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(155,93,229,0.3)' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.88) 100%)' }} />
         <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 24px', zIndex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
@@ -2300,7 +2300,7 @@ const TransfersPage = () => {
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
         <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px', zIndex: 1 }}>
@@ -2347,7 +2347,7 @@ const LeaguePage = () => {
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
         <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px', zIndex: 1 }}>
@@ -2490,7 +2490,7 @@ const StorePage = () => {
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
         <div style={{ position: 'absolute', left: 64, bottom: 32 }}>
@@ -2565,7 +2565,7 @@ const AccountPage = ({ setPage }) => {
     return (
       <div style={{ background: 'transparent', minHeight: '100vh' }}>
         <div className="sbc-page-header" style={{ position: 'relative', height: 220, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
           <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px' }}>
@@ -2613,7 +2613,7 @@ const AccountPage = ({ setPage }) => {
     return (
       <div style={{ background: 'transparent', minHeight: '100vh' }}>
         <div className="sbc-page-header" style={{ position: 'relative', height: 220, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
           <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px' }}>
@@ -2713,7 +2713,7 @@ const AccountPage = ({ setPage }) => {
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
         <div style={{ position: 'absolute', left: 64, bottom: 32, display: 'flex', alignItems: 'flex-end', gap: 20 }}>
@@ -2835,7 +2835,7 @@ const BasketPage = ({ setPage }) => {
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 220, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'url("/uploads/sad boi header.png")', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.6) 0%, rgba(3,8,16,0.9) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
         <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px' }}>

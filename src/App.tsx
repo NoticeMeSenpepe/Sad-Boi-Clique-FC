@@ -42,6 +42,31 @@ const THEME_COLORS = {
 // localStorage key for persisting Tweaks panel state across visits.
 const TWEAKS_STORAGE_KEY = 'sbcfc.tweaks.v1';
 
+// Page-header backgrounds (used by every sub-page header band — Squad,
+// Fixtures, Stats, etc.). Cycled on a 30-second timer.
+const PAGE_HEADER_IMAGES = [
+  '/uploads/sad boi header.png',
+  '/uploads/new sbc header.png',
+];
+
+/** Cycles the `--page-header-image` CSS variable through PAGE_HEADER_IMAGES
+ *  every 30 seconds. The variable is consumed by every sub-page's header
+ *  band, so they all swap simultaneously. */
+function usePageHeaderRotator() {
+  React.useEffect(() => {
+    const apply = (i: number) => {
+      document.documentElement.style.setProperty(
+        '--page-header-image',
+        `url("${PAGE_HEADER_IMAGES[i % PAGE_HEADER_IMAGES.length]}")`
+      );
+    };
+    let i = 0;
+    apply(i);
+    const id = window.setInterval(() => { i += 1; apply(i); }, 30_000);
+    return () => clearInterval(id);
+  }, []);
+}
+
 // ── Custom cursor — vanilla DOM, runs once on mount, no React state ──
 function useCustomCursor() {
   React.useEffect(() => {
@@ -183,6 +208,7 @@ const App: React.FC = () => {
   const [pageKey, setPageKey]               = React.useState(0);
 
   useCustomCursor();
+  usePageHeaderRotator();
 
   // Apply CSS variables + body bg whenever tweaks change; persist to localStorage.
   React.useEffect(() => {

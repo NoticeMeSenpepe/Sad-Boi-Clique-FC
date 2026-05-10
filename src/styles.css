@@ -1,3 +1,10 @@
+/* Page-header background image. Initial value here is a sane default
+   for the first paint; App.tsx alternates between this and the new
+   header on a 30-second timer. */
+:root {
+  --page-header-image: url("/uploads/sad boi header.png");
+}
+
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
