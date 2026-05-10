@@ -594,6 +594,48 @@ export async function getLiveTransfers(): Promise<TransferRow[]> {
   }));
 }
 
+// ── Store items (admin-managed) ──────────────────────────────────────
+
+export interface StoreItem {
+  id: number | string;
+  name: string;
+  price: number;
+  category: string;
+  tag: string;
+  panelColor: string;
+  subtitle: string;
+  images: string[];
+  soldOut: boolean;
+  sortOrder: number;
+  visible: boolean;
+  featured: boolean;
+}
+
+export async function getLiveStoreItems(): Promise<StoreItem[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from('store_items')
+    .select('id, name, price, category, tag, panel_color, subtitle, images, sold_out, sort_order, visible, featured')
+    .order('sort_order', { ascending: true })
+    .order('id', { ascending: true });
+  if (error || !data) return [];
+  return data.map((r): StoreItem => ({
+    id: r.id as number,
+    name: (r.name as string) || '',
+    price: typeof r.price === 'string' ? Number(r.price) : (r.price as number) || 0,
+    category: (r.category as string) || 'FAN GEAR',
+    tag: (r.tag as string) || '',
+    panelColor: (r.panel_color as string) || '#E4002B',
+    subtitle: (r.subtitle as string) || '',
+    images: Array.isArray(r.images) ? (r.images as string[]) : [],
+    soldOut: Boolean(r.sold_out),
+    sortOrder: (r.sort_order as number) ?? 100,
+    visible: r.visible !== false,
+    featured: Boolean(r.featured),
+  }));
+}
+
 /** Latest scrape run timestamp + status, for an "as of …" footer. */
 export async function getScraperHealth(): Promise<{ ranAt: string; ok: boolean } | null> {
   const sb = getSupabase();

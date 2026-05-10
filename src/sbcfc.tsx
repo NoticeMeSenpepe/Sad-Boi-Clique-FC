@@ -7,7 +7,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 // @ts-nocheck
 import React from 'react';
-import { getPulseStats, getLiveFixtures, getLiveMembersByEaUser, getLiveNews, getLiveTransfers, type LiveMemberStats } from './liveData';
+import { getPulseStats, getLiveFixtures, getLiveMembersByEaUser, getLiveNews, getLiveTransfers, getLiveStoreItems, type LiveMemberStats } from './liveData';
 import { useAuth } from './auth';
 
 /**
@@ -95,6 +95,8 @@ let _liveNewsRefreshKey = 0;
 function invalidateLiveNews() { _liveNewsRefreshKey += 1; }
 let _liveTransfersRefreshKey = 0;
 function invalidateLiveTransfers() { _liveTransfersRefreshKey += 1; }
+let _liveStoreRefreshKey = 0;
+function invalidateLiveStore() { _liveStoreRefreshKey += 1; }
 
 /** Hook: returns the news article list. Falls back to the prototype's
  *  curated SORTED_NEWS / ALL_NEWS if the database has no rows yet, so
@@ -161,6 +163,52 @@ function useLiveTransfers(): any[] {
       const live = await getLiveTransfers();
       if (cancelled) return;
       if (live.length === 0) { setItems(TRANSFERS_FALLBACK); return; }
+      setItems(live);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+  return items;
+}
+
+/** Fallback store catalogue used until the store_items table is populated.
+ *  Mirrors the prototype's hand-curated list so the page never looks empty. */
+const STORE_FALLBACK: any[] = [
+  { id: 'mock-1', name: 'HOME SHIRT 25/26', price: 60, category: 'KITS', tag: 'NEW DROP', panelColor: '#E4002B',
+    subtitle: 'Adult replica · Aura red, slim fit',
+    images: ['/assets/store/home-shirt-front.jpg','/assets/store/home-shirt-angled.jpg','/assets/store/home-shirt-rear.jpg'],
+    soldOut: false, sortOrder: 10, visible: true, featured: true },
+  { id: 'mock-2', name: 'GK SHIRT 25/26', price: 55, category: 'KITS', tag: '', panelColor: '#2a9d8f',
+    subtitle: 'Goalkeeper replica · Lewis #1',
+    images: ['/assets/store/gk-shirt-front.jpg','/assets/store/gk-shirt-angled.jpg','/assets/store/gk-shirt-rear.jpg'],
+    soldOut: false, sortOrder: 20, visible: true, featured: true },
+  { id: 'mock-3', name: 'TRAINING JACKET', price: 55, category: 'TRAINING', tag: 'BACK IN STOCK', panelColor: '#E4002B',
+    subtitle: 'Quarter-zip · what the squad warms up in',
+    images: ['/assets/store/jacket-front.jpg','/assets/store/jacket-angled.jpg','/assets/store/jacket-rear.jpg'],
+    soldOut: false, sortOrder: 30, visible: true, featured: true },
+  { id: 'mock-4', name: 'PANIKOVA SCARF', price: 14, category: 'FAN GEAR', tag: 'LIMITED', panelColor: '#e9c46a',
+    subtitle: '"WHEN THE PANIC HITS" · 100% acrylic',
+    images: ['/assets/store/panikova-scarf.jpg','/assets/store/panikova-scarf-close.jpg'],
+    soldOut: false, sortOrder: 40, visible: true, featured: true },
+  { id: 'mock-5', name: 'TRAINING HOODIE', price: 45, category: 'TRAINING', tag: '', panelColor: '#2a9d8f',
+    subtitle: 'Heavyweight · embroidered crest',
+    images: ['/assets/store/hoodie-front.jpg','/assets/store/hoodie-angled.jpg','/assets/store/hoodie-rear.jpg'],
+    soldOut: false, sortOrder: 50, visible: true, featured: true },
+  { id: 'mock-6', name: 'AURA STABILITY MUG', price: 12, category: 'FAN GEAR', tag: 'BESTSELLER', panelColor: '#E4002B',
+    subtitle: 'Reads at exactly 95°C · ceramic 11oz',
+    images: ['/assets/store/aura-mug.jpg'],
+    soldOut: false, sortOrder: 60, visible: true, featured: false },
+];
+
+function useLiveStoreItems(): any[] {
+  const [items, setItems] = React.useState<any[]>(STORE_FALLBACK);
+  const refreshKey = _liveStoreRefreshKey;
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const live = await getLiveStoreItems();
+      if (cancelled) return;
+      if (live.length === 0) { setItems(STORE_FALLBACK); return; }
       setItems(live);
     })();
     return () => { cancelled = true; };
@@ -1082,6 +1130,7 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
   const [pulseValues, setPulseValues] = React.useState({ pos: 0, rate: 0, gd: 0, pts: 0, matches: 0, skill: 0 });
   const players = useLivePlayers();
   const news = useLiveNews();
+  const storeItems = useLiveStoreItems();
 
   // Live fixtures: fetched once. All match-related panels on the home page
   // (LAST RESULT mini-card, CURRENT FORM, the LAST MATCH detail panel,
@@ -1555,14 +1604,20 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
           <button onClick={() => setPage('store')} style={{ background: 'var(--accent)', border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 12, letterSpacing: '0.1em', padding: '9px 18px', borderRadius: 3, textTransform: 'uppercase' }}>SHOP ALL →</button>
         </div>
         {(() => {
-          const STORE_ITEMS = [
-            { productId: 1,  name: 'HOME SHIRT 25/26',   price: '£60', tag: 'NEW DROP',      clr: 'var(--accent)', img: '/assets/store/home-shirt-front.jpg' },
-            { productId: 4,  name: 'GK SHIRT 25/26',     price: '£55', tag: '',              clr: '#2a9d8f',       img: '/assets/store/gk-shirt-front.jpg' },
-            { productId: 6,  name: 'TRAINING JACKET',    price: '£55', tag: 'BACK IN STOCK', clr: 'var(--accent)', img: '/assets/store/jacket-front.jpg' },
-            { productId: 10, name: 'PANIKOVA SCARF',     price: '£14', tag: 'LIMITED',       clr: '#e9c46a',       img: '/assets/store/panikova-scarf.jpg' },
-            { productId: 7,  name: 'TRAINING HOODIE',    price: '£45', tag: '',              clr: '#2a9d8f',       img: '/assets/store/hoodie-front.jpg' },
-            { productId: 9,  name: 'STAFF POLO',         price: '£35', tag: '',              clr: '#9b5de5',       img: '/assets/store/staff-shirt-front.jpg' }
-          ];
+          // Pull featured items from the live store. Falls back to the
+          // first six visible items if no row has featured = true.
+          const featured = storeItems.filter((it) => it.featured);
+          const pick = (featured.length > 0 ? featured : storeItems).slice(0, 6);
+          const STORE_ITEMS = pick.map((it) => ({
+            productId: it.id,
+            name: it.name,
+            price: `£${it.price}`,
+            tag: it.tag,
+            clr: it.panelColor,
+            img: (it.images && it.images[0]) || '/assets/store/staff-shirt-front.jpg',
+          }));
+          if (STORE_ITEMS.length === 0) return null;
+          // Duplicate the list so the marquee can loop seamlessly.
           const loop = STORE_ITEMS.concat(STORE_ITEMS);
           return <StoreCarousel loop={loop} setPage={setPage} />;
         })()}
@@ -2625,7 +2680,7 @@ const StoreCard = ({ item }) => {
 // ── STORE PAGE ──────────────────────────────────────────────────
 const StorePage = () => {
   const [filter, setFilter] = React.useState('ALL');
-  const filters = ['ALL', 'KITS', 'TRAINING', 'FAN GEAR'];
+  const liveItems = useLiveStoreItems();
 
   // If we arrived from a homepage preview, find the right card and pulse it.
   React.useEffect(() => {
@@ -2643,24 +2698,28 @@ const StorePage = () => {
     }, t));
   }, []);
 
-  const products = [
-    { id: 1, name: 'HOME SHIRT 25/26', price: 60, cat: 'KITS', tag: 'NEW DROP', clr: 'var(--accent)', sub: 'Adult replica · Aura red, slim fit', images: ['/assets/store/home-shirt-front.jpg', '/assets/store/home-shirt-angled.jpg', '/assets/store/home-shirt-rear.jpg'] },
-    { id: 2, name: 'AWAY SHIRT 25/26', price: 60, cat: 'KITS', tag: '', clr: '#9b5de5', sub: 'Adult replica · Midnight purple', soldOut: true, placeholderSrc: '/assets/store/staff-shirt-front.jpg' },
-    { id: 3, name: 'THIRD SHIRT 25/26', price: 60, cat: 'KITS', tag: '', clr: '#e9c46a', sub: 'Adult replica · European nights gold', soldOut: true, placeholderSrc: '/assets/store/staff-shirt-front.jpg' },
-    { id: 4, name: 'GK SHIRT 25/26', price: 55, cat: 'KITS', tag: '', clr: '#2a9d8f', sub: 'Goalkeeper replica · Lewis #1', images: ['/assets/store/gk-shirt-front.jpg', '/assets/store/gk-shirt-angled.jpg', '/assets/store/gk-shirt-rear.jpg'] },
-    { id: 5, name: 'JUNIOR HOME SHIRT', price: 45, cat: 'KITS', tag: '', clr: 'var(--accent)', sub: 'Ages 7–13 · same kit, smaller imp', images: ['/assets/store/home-shirt-front.jpg', '/assets/store/home-shirt-angled.jpg', '/assets/store/home-shirt-rear.jpg'] },
-    { id: 6, name: 'TRAINING JACKET', price: 55, cat: 'TRAINING', tag: 'BACK IN STOCK', clr: 'var(--accent)', sub: 'Quarter-zip · what the squad warms up in', images: ['/assets/store/jacket-front.jpg', '/assets/store/jacket-angled.jpg', '/assets/store/jacket-rear.jpg'] },
-    { id: 7, name: 'TRAINING HOODIE', price: 45, cat: 'TRAINING', tag: '', clr: '#2a9d8f', sub: 'Heavyweight · embroidered crest', images: ['/assets/store/hoodie-front.jpg', '/assets/store/hoodie-angled.jpg', '/assets/store/hoodie-rear.jpg'] },
-    { id: 13, name: 'TRAINING TOP', price: 40, cat: 'TRAINING', tag: '', clr: 'var(--accent)', sub: 'Match-day warmup · technical fabric', images: ['/assets/store/training-front.jpg', '/assets/store/training-angled.jpg', '/assets/store/training-rear.jpg'] },
-    { id: 8, name: 'STAFF POLO', price: 35, cat: 'TRAINING', tag: '', clr: '#9b5de5', sub: 'Bench-day fit · breathable mesh back', images: ['/assets/store/staff-shirt-front.jpg', '/assets/store/staff-shirt-angled.jpg', '/assets/store/staff-shirt-rear.jpg'] },
-    { id: 9, name: 'TRAINING SHORTS', price: 28, cat: 'TRAINING', tag: '', clr: '#9b5de5', sub: 'Same shorts the squad trains in', images: ['/assets/store/training-shorts.jpg', '/assets/store/training-shorts-side.jpg'] },
-    { id: 10, name: 'PANIKOVA SCARF', price: 14, cat: 'FAN GEAR', tag: 'LIMITED', clr: '#e9c46a', sub: '"WHEN THE PANIC HITS" · 100% acrylic', images: ['/assets/store/panikova-scarf.jpg', '/assets/store/panikova-scarf-close.jpg'] },
-    { id: 14, name: 'BOBBLE HAT', price: 22, cat: 'FAN GEAR', tag: '', clr: '#9b5de5', sub: 'Knit · embroidered imp · pom-pom included', images: ['/assets/store/bobble-hat-front.jpg', '/assets/store/bobble-hat-rear.jpg'] },
-    { id: 15, name: 'CLUB SOCKS', price: 12, cat: 'FAN GEAR', tag: '', clr: '#2a9d8f', sub: 'Crew length · cotton blend · imp on the cuff', images: ['/assets/store/socks.jpg'] },
-    { id: 16, name: 'AURA WALLET', price: 28, cat: 'FAN GEAR', tag: 'NEW', clr: '#e9c46a', sub: 'Bifold · faux leather · debossed crest', images: ['/assets/store/wallet-front.jpg', '/assets/store/wallet-open.jpg'] },
-    { id: 12, name: 'AURA STABILITY MUG', price: 12, cat: 'FAN GEAR', tag: 'BESTSELLER', clr: 'var(--accent)', sub: 'Reads at exactly 95°C · ceramic 11oz', images: ['/assets/store/aura-mug.jpg'] }
-  ];
-  const filtered = filter === 'ALL' ? products : products.filter(p => p.cat === filter);
+  // Map live shape (panel_color/subtitle/category) onto the field names
+  // the existing StoreCard component reads (clr/sub/cat). Keeps the
+  // visual code untouched.
+  const products = liveItems.map((it) => ({
+    id: it.id,
+    name: it.name,
+    price: it.price,
+    cat: it.category,
+    tag: it.tag,
+    clr: it.panelColor,
+    sub: it.subtitle,
+    images: it.images && it.images.length > 0 ? it.images : undefined,
+    placeholderSrc: it.soldOut && (!it.images || it.images.length === 0) ? '/assets/store/staff-shirt-front.jpg' : undefined,
+    soldOut: it.soldOut,
+  }));
+
+  // Filter pills: 'ALL' plus every distinct category present in the data,
+  // preserving sort order so KITS/TRAINING/FAN GEAR stay grouped naturally.
+  const seenCats = [];
+  for (const p of products) if (p.cat && !seenCats.includes(p.cat)) seenCats.push(p.cat);
+  const filters = ['ALL', ...seenCats];
+  const filtered = filter === 'ALL' ? products : products.filter((p) => p.cat === filter);
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
@@ -3154,7 +3213,7 @@ const AdminPage = ({ setPage }) => {
     { id: 'invites',   label: 'Invite Codes',  ready: true  },
     { id: 'news',      label: 'News Articles', ready: true  },
     { id: 'transfers', label: 'Transfers',     ready: true  },
-    { id: 'store',     label: 'Store Items',   ready: false },
+    { id: 'store',     label: 'Store Items',   ready: true  },
     { id: 'players',   label: 'Player Lore',   ready: false },
   ];
 
@@ -3184,11 +3243,11 @@ const AdminPage = ({ setPage }) => {
         {tab === 'invites'   && <AdminInvitesPanel />}
         {tab === 'news'      && <AdminNewsPanel />}
         {tab === 'transfers' && <AdminTransfersPanel />}
-        {tab !== 'invites' && tab !== 'news' && tab !== 'transfers' && (
+        {tab === 'store'     && <AdminStorePanel />}
+        {tab !== 'invites' && tab !== 'news' && tab !== 'transfers' && tab !== 'store' && (
           <div style={{ background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '40px 28px', textAlign: 'center' }}>
             <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 8 }}>Coming soon</div>
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.7)', lineHeight: 1.6, maxWidth: 560, margin: '0 auto' }}>
-              {tab === 'store'   && 'Manage the merch catalogue — name, price, sizes, photos, sold-out flag, optional tag.'}
               {tab === 'players' && 'Edit the static parts of player profiles — archetype, lore, tags, accent colour, kit number. Live stats from EA stay untouched.'}
             </div>
           </div>
@@ -3853,6 +3912,301 @@ const AdminTransfersPanel = () => {
               <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: '#fff', background: r.panel_color || 'var(--accent)', padding: '3px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{r.status_label}</span>
             </div>
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.65)' }}>{fmtDate(r.happened_at)}</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => openEdit(r)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(218,218,218,0.8)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>Edit</button>
+              <button onClick={() => remove(r)} style={{ background: 'transparent', border: '1px solid rgba(228,0,43,0.4)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+// ── ADMIN: Store Items panel ────────────────────────────────────
+const AdminStorePanel = () => {
+  const auth = useAuth();
+  const [rows, setRows]       = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr]         = React.useState(null);
+  const [busy, setBusy]       = React.useState(false);
+  const [editingId, setEditingId] = React.useState/* :null|'new'|number */(null);
+  const [uploadingIdx, setUploadingIdx] = React.useState/* :number|null */(null);
+
+  const blankForm = {
+    name: '', price: '0', category: 'KITS', tag: '', panel_color: '#E4002B',
+    subtitle: '', images: /* :string[] */ [],
+    sold_out: false, sort_order: '100', visible: true, featured: false,
+  };
+  const [form, setForm] = React.useState(blankForm);
+
+  const fetchRows = React.useCallback(async () => {
+    setLoading(true);
+    const sb = (await import('./supabase')).getSupabase();
+    if (!sb) { setErr('No backend connection.'); setLoading(false); return; }
+    const { data, error } = await sb
+      .from('store_items')
+      .select('id, name, price, category, tag, panel_color, subtitle, images, sold_out, sort_order, visible, featured, updated_at')
+      .order('sort_order', { ascending: true })
+      .order('id', { ascending: true });
+    if (error) setErr(error.message);
+    setRows(data || []);
+    setLoading(false);
+  }, []);
+
+  React.useEffect(() => { fetchRows(); }, [fetchRows]);
+
+  const openNew = () => {
+    setForm({ ...blankForm, sort_order: String((rows.at(-1)?.sort_order ?? 100) + 10) });
+    setEditingId('new');
+    setErr(null);
+  };
+  const openEdit = (row) => {
+    setForm({
+      name:        row.name ?? '',
+      price:       String(row.price ?? '0'),
+      category:    row.category ?? 'KITS',
+      tag:         row.tag ?? '',
+      panel_color: row.panel_color ?? '#E4002B',
+      subtitle:    row.subtitle ?? '',
+      images:      Array.isArray(row.images) ? row.images.slice() : [],
+      sold_out:    Boolean(row.sold_out),
+      sort_order:  String(row.sort_order ?? 100),
+      visible:     row.visible !== false,
+      featured:    Boolean(row.featured),
+    });
+    setEditingId(row.id);
+    setErr(null);
+  };
+  const cancelEdit = () => { setEditingId(null); setErr(null); };
+
+  const setImageAt = (idx, value) => setForm((f) => {
+    const next = f.images.slice();
+    next[idx] = value;
+    return { ...f, images: next };
+  });
+  const addImageRow = () => setForm((f) => ({ ...f, images: [...f.images, ''] }));
+  const removeImageAt = (idx) => setForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== idx) }));
+  const moveImage = (idx, dir) => setForm((f) => {
+    const next = f.images.slice();
+    const j = idx + dir;
+    if (j < 0 || j >= next.length) return f;
+    [next[idx], next[j]] = [next[j], next[idx]];
+    return { ...f, images: next };
+  });
+
+  const onUploadAt = async (idx, file) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setErr('Image is over 5 MB — pick a smaller one.'); return; }
+    setUploadingIdx(idx); setErr(null);
+    try {
+      const sb = (await import('./supabase')).getSupabase();
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').toLowerCase();
+      const path = `${Date.now()}-${safe}`;
+      const { error: upErr } = await sb.storage.from('store-images').upload(path, file, { upsert: false, contentType: file.type });
+      if (upErr) { setErr(`Upload failed: ${upErr.message}`); return; }
+      const { data } = sb.storage.from('store-images').getPublicUrl(path);
+      setImageAt(idx, data.publicUrl);
+    } finally { setUploadingIdx(null); }
+  };
+
+  const save = async () => {
+    setErr(null);
+    if (!form.name.trim()) { setErr('Name is required.'); return; }
+    const priceNum = Number(form.price);
+    if (Number.isNaN(priceNum) || priceNum < 0) { setErr('Price must be a non-negative number.'); return; }
+    const sortNum = Number(form.sort_order);
+    if (Number.isNaN(sortNum)) { setErr('Sort order must be a number.'); return; }
+    setBusy(true);
+    const sb = (await import('./supabase')).getSupabase();
+    const cleanImages = form.images.map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean);
+    const payload = {
+      name:        form.name.trim(),
+      price:       priceNum,
+      category:    form.category.trim() || 'FAN GEAR',
+      tag:         form.tag.trim(),
+      panel_color: form.panel_color.trim() || '#E4002B',
+      subtitle:    form.subtitle.trim(),
+      images:      cleanImages,
+      sold_out:    form.sold_out,
+      sort_order:  sortNum,
+      visible:     form.visible,
+      featured:    form.featured,
+    };
+    let error;
+    if (editingId === 'new') {
+      ({ error } = await sb.from('store_items').insert({ ...payload, created_by: auth.user?.id ?? null }));
+    } else {
+      ({ error } = await sb.from('store_items').update(payload).eq('id', editingId));
+    }
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    invalidateLiveStore();
+    setEditingId(null);
+    fetchRows();
+  };
+
+  const remove = async (row) => {
+    if (!confirm(`Delete "${row.name}"? This can't be undone.`)) return;
+    const sb = (await import('./supabase')).getSupabase();
+    const { error } = await sb.from('store_items').delete().eq('id', row.id);
+    if (error) { setErr(error.message); return; }
+    invalidateLiveStore();
+    fetchRows();
+  };
+
+  const fmtPrice = (p) => `£${Number(p).toFixed(2).replace(/\.00$/, '')}`;
+
+  const categoryPresets = ['KITS', 'TRAINING', 'FAN GEAR', 'ACCESSORIES'];
+  const tagPresets      = ['NEW DROP', 'BACK IN STOCK', 'LIMITED', 'NEW', 'BESTSELLER', 'SALE', ''];
+
+  if (editingId !== null) {
+    return (
+      <div style={{ display: 'grid', gap: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{editingId === 'new' ? 'New product' : 'Edit product'}</div>
+          <button onClick={cancelEdit} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(218,218,218,0.65)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '8px 14px', borderRadius: 4, textTransform: 'uppercase' }}>← Back to list</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
+          <Field label="Name" required>
+            <input type="text" placeholder="HOME SHIRT 25/26" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Price (£)">
+            <input type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Sort order (lower = earlier)">
+            <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} style={inputStyle} />
+          </Field>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+          <Field label="Category">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="text" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+              <select onChange={(e) => { if (e.target.value) setForm({ ...form, category: e.target.value }); e.target.selectedIndex = 0; }} style={{ ...inputStyle, width: 36, padding: '0 6px', cursor: 'pointer' }}>
+                <option value="">▼</option>
+                {categoryPresets.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </Field>
+          <Field label="Tag (optional chip)">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="text" value={form.tag} onChange={(e) => setForm({ ...form, tag: e.target.value })} style={{ ...inputStyle, flex: 1 }} placeholder="e.g. NEW DROP" />
+              <select onChange={(e) => { setForm({ ...form, tag: e.target.value }); e.target.selectedIndex = 0; }} style={{ ...inputStyle, width: 36, padding: '0 6px', cursor: 'pointer' }}>
+                <option value="">▼</option>
+                {tagPresets.map((t, i) => <option key={i} value={t}>{t || '(none)'}</option>)}
+              </select>
+            </div>
+          </Field>
+          <Field label="Accent colour">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="color" value={form.panel_color} onChange={(e) => setForm({ ...form, panel_color: e.target.value })} style={{ width: 38, height: 38, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: 0, background: 'transparent', cursor: 'pointer' }} />
+              <input type="text" value={form.panel_color} onChange={(e) => setForm({ ...form, panel_color: e.target.value })} style={{ ...inputStyle, flex: 1, fontFamily: 'Roboto Mono, ui-monospace, monospace' }} />
+            </div>
+          </Field>
+        </div>
+
+        <Field label="Subtitle (one-line description shown on the card)">
+          <input type="text" placeholder='e.g. "Adult replica · Aura red, slim fit"' value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} style={inputStyle} />
+        </Field>
+
+        <Field label="Product images (first one is the main card image)">
+          <div style={{ display: 'grid', gap: 10 }}>
+            {form.images.length === 0 && (
+              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.5)' }}>No images yet. Add one below — the first image is what shoppers see on the card.</div>
+            )}
+            {form.images.map((url, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '70px 1fr auto auto auto auto', gap: 8, alignItems: 'center', background: 'rgba(8,15,30,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: 8 }}>
+                <div style={{ width: 70, height: 50, borderRadius: 3, background: 'rgba(0,0,0,0.4)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {url
+                    ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget).style.display = 'none'; }} />
+                    : <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, color: 'rgba(218,218,218,0.4)' }}>{i + 1}</span>}
+                </div>
+                <input type="text" value={url} onChange={(e) => setImageAt(i, e.target.value)} placeholder="Paste URL/path or click Upload →" style={{ ...inputStyle, fontSize: 12 }} />
+                <label style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', cursor: uploadingIdx === i ? 'not-allowed' : 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', padding: '8px 10px', borderRadius: 3, textTransform: 'uppercase', whiteSpace: 'nowrap', opacity: uploadingIdx === i ? 0.5 : 1 }}>
+                  {uploadingIdx === i ? '…' : 'Upload'}
+                  <input type="file" accept="image/*" disabled={uploadingIdx !== null} onChange={(e) => { onUploadAt(i, e.target.files?.[0]); e.target.value = ''; }} style={{ display: 'none' }} />
+                </label>
+                <button type="button" onClick={() => moveImage(i, -1)} disabled={i === 0} title="Move up"
+                        style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: i === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(218,218,218,0.65)', cursor: i === 0 ? 'not-allowed' : 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 12, padding: '6px 8px', borderRadius: 3 }}>↑</button>
+                <button type="button" onClick={() => moveImage(i, 1)} disabled={i === form.images.length - 1} title="Move down"
+                        style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: i === form.images.length - 1 ? 'rgba(255,255,255,0.2)' : 'rgba(218,218,218,0.65)', cursor: i === form.images.length - 1 ? 'not-allowed' : 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 12, padding: '6px 8px', borderRadius: 3 }}>↓</button>
+                <button type="button" onClick={() => removeImageAt(i)} title="Remove"
+                        style={{ background: 'transparent', border: '1px solid rgba(228,0,43,0.4)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', padding: '6px 10px', borderRadius: 3, textTransform: 'uppercase' }}>×</button>
+              </div>
+            ))}
+            <div>
+              <button type="button" onClick={addImageRow}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px dashed rgba(255,255,255,0.2)', color: 'rgba(218,218,218,0.85)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '8px 14px', borderRadius: 4, textTransform: 'uppercase' }}>+ Add image</button>
+            </div>
+          </div>
+        </Field>
+
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.sold_out} onChange={(e) => setForm({ ...form, sold_out: e.target.checked })} />
+            <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: '#fff' }}>Sold out</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} />
+            <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: '#fff' }}>Featured (homepage carousel)</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.visible} onChange={(e) => setForm({ ...form, visible: e.target.checked })} />
+            <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: '#fff' }}>Visible on the public store</span>
+          </label>
+        </div>
+
+        {err && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)' }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={cancelEdit} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(218,218,218,0.65)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '10px 16px', borderRadius: 4, textTransform: 'uppercase' }}>Cancel</button>
+          <button onClick={save} disabled={busy || !form.name.trim()}
+                  style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.16em', padding: '10px 18px', borderRadius: 4, textTransform: 'uppercase', whiteSpace: 'nowrap', opacity: (busy || !form.name.trim()) ? 0.5 : 1 }}>
+            {busy ? '…' : (editingId === 'new' ? 'Publish →' : 'Save changes →')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.6)' }}>{rows.length} item{rows.length === 1 ? '' : 's'} in the store.</div>
+        <button onClick={openNew} style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.16em', padding: '10px 18px', borderRadius: 4, textTransform: 'uppercase' }}>+ New item</button>
+      </div>
+      {err && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)' }}>{err}</div>}
+      <div style={{ background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.1fr 0.7fr 0.9fr 1fr 0.7fr', alignItems: 'center', padding: '10px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}>
+          {['', 'Name', 'Category', 'Price', 'Tag', 'Flags', 'Actions'].map((h, i) => (
+            <div key={i} style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>{h}</div>
+          ))}
+        </div>
+        {loading && <div style={{ padding: 20, fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>Loading…</div>}
+        {!loading && rows.length === 0 && (
+          <div style={{ padding: 20, fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>No items yet. The Store page is showing fallback items. Click "+ New item" to add a real one.</div>
+        )}
+        {rows.map((r, i) => (
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.1fr 0.7fr 0.9fr 1fr 0.7fr', alignItems: 'center', padding: '12px 18px', borderBottom: i < rows.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+            <div style={{ width: 50, height: 40, borderRadius: 3, background: 'rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+              {Array.isArray(r.images) && r.images[0]
+                ? <img src={r.images[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget).style.display = 'none'; }} />
+                : null}
+            </div>
+            <div>
+              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+              {r.subtitle && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, color: 'rgba(218,218,218,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.subtitle}</div>}
+            </div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.7)' }}>{r.category}</div>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff' }}>{fmtPrice(r.price)}</div>
+            <div>{r.tag ? <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: '#fff', background: r.panel_color || 'var(--accent)', padding: '3px 8px', borderRadius: 2, textTransform: 'uppercase' }}>{r.tag}</span> : <span style={{ color: 'rgba(218,218,218,0.3)' }}>—</span>}</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+              {r.sold_out && <span style={{ color: '#e9c46a', background: 'rgba(233,196,106,0.1)', padding: '2px 6px', borderRadius: 2 }}>SOLD OUT</span>}
+              {r.featured && <span style={{ color: '#9b5de5', background: 'rgba(155,93,229,0.12)', padding: '2px 6px', borderRadius: 2 }}>FEATURED</span>}
+              {!r.visible && <span style={{ color: 'rgba(218,218,218,0.5)', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 2 }}>HIDDEN</span>}
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={() => openEdit(r)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(218,218,218,0.8)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>Edit</button>
               <button onClick={() => remove(r)} style={{ background: 'transparent', border: '1px solid rgba(228,0,43,0.4)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>Delete</button>
