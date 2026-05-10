@@ -7,7 +7,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 // @ts-nocheck
 import React from 'react';
-import { getPulseStats, getLiveFixtures, getLiveMembersByEaUser, getLiveNews, getLiveTransfers, getLiveStoreItems, type LiveMemberStats } from './liveData';
+import { getPulseStats, getLiveFixtures, getLiveMembersByEaUser, getLiveNews, getLiveTransfers, getLiveStoreItems, getLivePlayers, type LiveMemberStats, type LivePlayer } from './liveData';
 import { useAuth } from './auth';
 
 /**
@@ -20,11 +20,46 @@ import { useAuth } from './auth';
  */
 let _liveMergedCache: any[] | null = null;
 let _liveMergedInflight: Promise<any[]> | null = null;
+let _livePlayersRefreshKey = 0;
+function invalidateLivePlayers() {
+  _livePlayersRefreshKey += 1;
+  _liveMergedCache = null;
+  _liveMergedInflight = null;
+}
 
-function mergeLivePlayers(map: Map<string, LiveMemberStats>): any[] {
-  return PLAYERS.map((p: any) => {
+/** Convert a LivePlayer (DB row) into the player shape the prototype uses. */
+function dbPlayerToPrototype(r: LivePlayer): any {
+  return {
+    id: r.id,
+    name: r.name,
+    shortName: r.shortName,
+    number: r.number,
+    eaUser: r.eaUser,
+    image: r.image,
+    position: r.position,
+    rating: r.rating,
+    rarity: r.rarity,
+    nationality: r.nationality,
+    goals: r.goals,
+    apps: r.apps,
+    assists: r.assists,
+    cleanSheets: r.cleanSheets,
+    stats: r.stats,
+    tags: r.tags,
+    accentColor: r.accentColor,
+    glowColor: r.glowColor,
+    archetype: r.archetype,
+    lore: r.lore,
+    timeline: r.timeline,
+    sortOrder: r.sortOrder,
+    visible: r.visible,
+  };
+}
+
+function mergeLivePlayers(roster: any[], map: Map<string, LiveMemberStats>): any[] {
+  return roster.map((p: any) => {
     if (!p.eaUser) return { ...p, isLive: false };
-    const live = map.get(p.eaUser.toLowerCase());
+    const live = map.get(String(p.eaUser).toLowerCase());
     if (!live) return { ...p, isLive: false };
     return {
       ...p,
@@ -44,8 +79,12 @@ async function loadMergedPlayers(): Promise<any[]> {
   if (_liveMergedInflight) return _liveMergedInflight;
   _liveMergedInflight = (async () => {
     try {
-      const map = await getLiveMembersByEaUser();
-      const merged = mergeLivePlayers(map);
+      const [dbPlayers, eaMap] = await Promise.all([
+        getLivePlayers(),
+        getLiveMembersByEaUser(),
+      ]);
+      const roster = dbPlayers.length > 0 ? dbPlayers.map(dbPlayerToPrototype) : PLAYERS;
+      const merged = mergeLivePlayers(roster, eaMap);
       _liveMergedCache = merged;
       return merged;
     } catch {
@@ -63,7 +102,7 @@ function useLivePlayers(): any[] {
     let cancelled = false;
     loadMergedPlayers().then(merged => { if (!cancelled) setPlayers(merged); });
     return () => { cancelled = true; };
-  }, []);
+  }, [_livePlayersRefreshKey]);
   return players;
 }
 
@@ -1386,7 +1425,7 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
             if (!sp) return null;
             const statKeys = sp.position === 'GK' ? ['DIV', 'HAN', 'REF'] : ['PAC', 'SHO', 'DRI'];
             return (
-              <div className="sbc-hero-right" style={{ flex: '0 0 380px', padding: '0 32px 0 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="sbc-hero-right" style={{ flex: '0 0 auto', width: 'clamp(360px, 26vw, 560px)', padding: '0 32px 0 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                   <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 13, fontWeight: 700, letterSpacing: '0.22em', color: 'var(--accent)', textTransform: 'uppercase' }}>Player Spotlight</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1414,11 +1453,11 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
                   border: `1px solid ${sp.accentColor}55`,
                   boxShadow: spHov ? `0 16px 50px ${sp.glowColor}` : '0 4px 24px rgba(0,0,0,0.5)',
                   transition: 'all 0.3s', cursor: 'pointer',
-                  // Fixed portrait box — same on every viewport. The 332×600 ratio
-                  // (≈ 0.55) is close to Panikova's source photo so he barely crops;
-                  // taller-source photos lose a small slice top + bottom under
-                  // objectFit: cover, which the user has confirmed is acceptable.
-                  width: 332, height: 600, flexShrink: 0 }}>
+                  // Fluid portrait box that scales up on larger viewports while
+                  // preserving the 332:600 (~0.553) aspect ratio of Panikova's
+                  // source photo so he barely crops. Width is driven by the
+                  // parent column's `clamp(...)`; aspect-ratio handles height.
+                  width: '100%', aspectRatio: '332 / 600', flexShrink: 0 }}>
                   {/* Tinted backdrop sits behind the photo (only visible if a photo
                       ever fails to load — with cover-fit it's normally invisible). */}
                   <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, ${sp.accentColor}22, ${sp.accentColor}05)` }} />
@@ -1859,11 +1898,110 @@ const SquadPage = ({ setSelectedPlayer }) => {
 };
 
 // ── STATS PAGE ──────────────────────────────────────────────────
+// ── STATS PAGE ──────────────────────────────────────────────────
+// Sortable EA-style league table — one row per player. Mirrors the columns
+// EA's official member-list page shows. Live numbers (apps, wins, win %,
+// goals, assists, pass %, tackle %, MOTM, avg rating) come from
+// member_state for human players (eaUser set); AI characters fall back to
+// their hand-authored mock numbers, with em-dashes for fields that don't
+// apply (e.g. an AI character has no live pass success rate).
+const POSITION_GROUPS = {
+  ALL: null,
+  GK:  ['GK'],
+  DEF: ['CB', 'LB', 'RB', 'LWB', 'RWB'],
+  MID: ['CDM', 'CM', 'CAM'],
+  ATT: ['LW', 'RW', 'CF', 'ST'],
+};
+
 const StatsPage = ({ setSelectedPlayer }) => {
   const players = useLivePlayers();
-  const scorers = [...players].filter((p) => p.goals > 0).sort((a, b) => b.goals - a.goals);
-  const assisters = [...players].filter((p) => p.assists > 0).sort((a, b) => b.assists - a.assists);
-  const maxGoals = scorers[0]?.goals || 1;
+  const [sortKey, setSortKey] = React.useState('overall');
+  const [sortDir, setSortDir] = React.useState('desc');
+  const [posGroup, setPosGroup] = React.useState('ALL');
+
+  // Flatten the merged player + EA-live record into a single row shape that
+  // the table reads. AI characters have no `liveStats`; their EA-only
+  // columns are null and render as em-dashes.
+  const rows = players.map((p) => {
+    const ls = p.liveStats || null;
+    return {
+      player:   p,
+      name:     p.shortName || p.name,
+      position: p.position,
+      overall:  p.rating ?? null,
+      apps:     p.apps ?? 0,
+      wins:     ls?.wins ?? null,
+      winPct:   ls?.winPercent ?? null,
+      goals:    p.goals ?? 0,
+      assists:  p.assists ?? 0,
+      passPct:  ls?.passSuccessPct ?? null,
+      tklPct:   ls?.tackleSuccessPct ?? null,
+      motm:     ls?.manOfTheMatch ?? null,
+      rating:   ls?.ratingAverage ?? null,
+    };
+  });
+
+  const allowedPositions = POSITION_GROUPS[posGroup];
+  const filtered = allowedPositions
+    ? rows.filter((r) => allowedPositions.includes(r.position))
+    : rows;
+
+  // Nulls (em-dashes) always sort to the bottom regardless of direction —
+  // the asc/desc flip is applied only between two real values, so AI
+  // characters with no live EA data sink to the bottom either way.
+  const cmp = (a, b, key) => {
+    const av = a[key];
+    const bv = b[key];
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    if (typeof av === 'string' && typeof bv === 'string') {
+      return sortDir === 'asc' ? av.localeCompare(bv) : -av.localeCompare(bv);
+    }
+    return sortDir === 'asc' ? (av as number) - (bv as number) : (bv as number) - (av as number);
+  };
+  const sorted = [...filtered].sort((a, b) => cmp(a, b, sortKey));
+
+  const onHeaderClick = (key) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      // Numeric stats default to descending (biggest first); name defaults asc.
+      setSortDir(key === 'name' || key === 'position' ? 'asc' : 'desc');
+    }
+  };
+
+  // Column definitions — drives both the header row and each body row, so
+  // adding/removing a column only needs editing here.
+  const columns = [
+    { key: 'name',     label: 'Player',  align: 'left',   tip: 'Player name' },
+    { key: 'position', label: 'POS',     align: 'center', tip: 'Position' },
+    { key: 'overall',  label: 'OVR',     align: 'center', tip: 'Pro overall (EA)' },
+    { key: 'apps',     label: 'APP',     align: 'center', tip: 'Appearances' },
+    { key: 'winPct',   label: 'WIN %',   align: 'center', tip: 'Win percentage' },
+    { key: 'goals',    label: 'GOAL',    align: 'center', tip: 'Goals' },
+    { key: 'assists',  label: 'AST',     align: 'center', tip: 'Assists' },
+    { key: 'passPct',  label: 'PASS %',  align: 'center', tip: 'Pass success %' },
+    { key: 'tklPct',   label: 'TKL %',   align: 'center', tip: 'Tackle success %' },
+    { key: 'motm',     label: 'MOTM',    align: 'center', tip: 'Man of the match awards' },
+    { key: 'rating',   label: 'RATING',  align: 'center', tip: 'Average match rating' },
+  ];
+
+  const fmtPct  = (v) => (v == null ? '—' : `${Math.round(v as number)}%`);
+  const fmtNum  = (v) => (v == null ? '—' : String(v));
+  const fmtRate = (v) => (v == null ? '—' : (v as number).toFixed(1));
+
+  // Build the right cell text for each column key.
+  const cellText = (r, key) => {
+    if (key === 'winPct' || key === 'passPct' || key === 'tklPct') return fmtPct(r[key]);
+    if (key === 'rating') return fmtRate(r[key]);
+    if (key === 'name' || key === 'position') return r[key];
+    return fmtNum(r[key]);
+  };
+
+  // Grid template — keeps header + body rows aligned via a shared columns string.
+  const gridTemplate = '2.4fr 0.7fr 0.7fr 0.7fr 0.9fr 0.7fr 0.7fr 0.9fr 0.9fr 0.7fr 0.9fr';
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
@@ -1879,94 +2017,110 @@ const StatsPage = ({ setSelectedPlayer }) => {
         </div>
       </div>
       <RainbowBar />
-      <div style={{ padding: '40px 64px 64px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
-          {/* Top Scorers */}
-          <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(30,60,120,0.35)', borderRadius: 8, overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(30,60,120,0.35)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(228,0,43,0.06)' }}>
-              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>TOP SCORERS</div>
-              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.15em', textTransform: 'uppercase' }}>⚽ Goals</div>
-            </div>
-            {scorers.map((p, i) =>
-            <div key={p.id} onClick={() => setSelectedPlayer(p)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 20px', borderBottom: '1px solid rgba(30,60,120,0.15)', cursor: 'pointer', transition: 'background 0.2s' }}
-            onMouseEnter={(e) => e.currentTarget.style.background = `${p.accentColor}0a`}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
-              
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: 'rgba(218,218,218,0.15)', width: 24, textAlign: 'center' }}>{i + 1}</div>
-                {p.image ?
-              <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', border: `2px solid ${p.accentColor}55`, flexShrink: 0 }}><img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} alt={p.name} /></div> :
-              <div style={{ width: 40, height: 40, borderRadius: '50%', background: `${p.accentColor}22`, border: `2px solid ${p.accentColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 15, color: p.accentColor, flexShrink: 0 }}>{p.number}</div>
-              }
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase' }}>{p.shortName}</div>
-                  <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 2, marginTop: 4 }}>
-                    <div style={{ height: '100%', width: `${p.goals / maxGoals * 100}%`, background: p.accentColor, borderRadius: 2 }} />
-                  </div>
-                </div>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 24, color: p.accentColor }}>{p.goals}</div>
-              </div>
-            )}
-          </div>
-          {/* Top Assists */}
-          <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(30,60,120,0.35)', borderRadius: 8, overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(30,60,120,0.35)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(67,97,238,0.06)' }}>
-              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>TOP ASSISTS</div>
-              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, color: '#4361ee', letterSpacing: '0.15em', textTransform: 'uppercase' }}>🎯 Assists</div>
-            </div>
-            {assisters.slice(0, 7).map((p, i) => {
-              const maxA = assisters[0]?.assists || 1;
-              return (
-                <div key={p.id} onClick={() => setSelectedPlayer(p)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 20px', borderBottom: '1px solid rgba(30,60,120,0.15)', cursor: 'pointer', transition: 'background 0.2s' }}
-                onMouseEnter={(e) => e.currentTarget.style.background = `${p.accentColor}0a`}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
-                  
-                  <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: 'rgba(218,218,218,0.15)', width: 24 }}>{i + 1}</div>
-                  {p.image ?
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', border: `2px solid ${p.accentColor}55`, flexShrink: 0 }}><img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} alt={p.name} /></div> :
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: `${p.accentColor}22`, border: `2px solid ${p.accentColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 15, color: p.accentColor, flexShrink: 0 }}>{p.number}</div>
-                  }
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase' }}>{p.shortName}</div>
-                    <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 2, marginTop: 4 }}>
-                      <div style={{ height: '100%', width: `${p.assists / maxA * 100}%`, background: p.accentColor, borderRadius: 2 }} />
-                    </div>
-                  </div>
-                  <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 24, color: p.accentColor }}>{p.assists}</div>
-                </div>);
 
-            })}
+      <div style={{ padding: '32px 64px 64px' }}>
+        {/* Filter strip */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, marginBottom: 18 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase', marginRight: 4 }}>Position</div>
+            {Object.keys(POSITION_GROUPS).map((g) => (
+              <button key={g} onClick={() => setPosGroup(g)} style={{
+                background: posGroup === g ? 'rgba(228,0,43,0.18)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${posGroup === g ? 'var(--accent)' : 'rgba(255,255,255,0.1)'}`,
+                color: posGroup === g ? '#fff' : 'rgba(218,218,218,0.7)',
+                cursor: 'pointer',
+                fontFamily: 'Anton, sans-serif', fontSize: 12, letterSpacing: '0.14em',
+                padding: '7px 14px', borderRadius: 4, textTransform: 'uppercase', transition: 'all 0.15s',
+              }}>{g}</button>
+            ))}
+          </div>
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.5)' }}>
+            {sorted.length} player{sorted.length === 1 ? '' : 's'}
           </div>
         </div>
-        {/* Player cards grid */}
-        <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 18 }}>PLAYER RATINGS</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
-          {PLAYERS.slice(0, 6).map((p) =>
-          <div key={p.id} onClick={() => setSelectedPlayer(p)} style={{ background: 'rgba(10,22,40,0.7)', border: `1px solid ${p.accentColor}33`, borderRadius: 8, padding: '16px 18px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', gap: 14, alignItems: 'center' }}
-          onMouseEnter={(e) => {e.currentTarget.style.borderColor = p.accentColor;e.currentTarget.style.transform = 'translateY(-2px)';}}
-          onMouseLeave={(e) => {e.currentTarget.style.borderColor = `${p.accentColor}33`;e.currentTarget.style.transform = 'none';}}>
-            
-              {p.image ?
-            <div style={{ width: 52, height: 52, borderRadius: '50%', overflow: 'hidden', border: `2px solid ${p.accentColor}66`, flexShrink: 0 }}><img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} alt={p.name} /></div> :
-            <div style={{ width: 52, height: 52, borderRadius: '50%', background: `${p.accentColor}22`, border: `2px solid ${p.accentColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 20, color: p.accentColor, flexShrink: 0 }}>{p.number}</div>
-            }
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 15, color: '#fff', textTransform: 'uppercase' }}>{p.shortName}</div>
-                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{p.position}</div>
-                {Object.entries(p.stats).slice(0, 3).map(([k, v]) =>
-              <div key={k} style={{ marginBottom: 4 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                      <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase' }}>{k}</span>
-                      <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, color: p.accentColor }}>{v}</span>
-                    </div>
-                    <div style={{ height: 2, background: 'rgba(255,255,255,0.05)', borderRadius: 1 }}>
-                      <div style={{ height: '100%', width: `${v}%`, background: p.accentColor, borderRadius: 1 }} />
-                    </div>
-                  </div>
-              )}
-              </div>
-              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 36, color: p.accentColor, flexShrink: 0 }}>{p.rating}</div>
+
+        {/* Table */}
+        <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(30,60,120,0.35)', borderRadius: 8, overflow: 'hidden' }}>
+          {/* Header row */}
+          <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center', padding: '12px 20px', borderBottom: '1px solid rgba(30,60,120,0.5)', background: 'rgba(0,0,0,0.25)' }}>
+            {columns.map((c) => {
+              const active = sortKey === c.key;
+              return (
+                <button
+                  key={c.key}
+                  onClick={() => onHeaderClick(c.key)}
+                  title={c.tip}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em',
+                    color: active ? 'var(--accent)' : 'rgba(218,218,218,0.55)',
+                    textAlign: c.align, textTransform: 'uppercase', padding: 0,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: c.align === 'left' ? 'flex-start' : 'center', gap: 4,
+                  }}
+                >
+                  <span>{c.label}</span>
+                  {active && <span style={{ fontSize: 10, lineHeight: 1 }}>{sortDir === 'asc' ? '▲' : '▼'}</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Body rows */}
+          {sorted.length === 0 && (
+            <div style={{ padding: 28, textAlign: 'center', fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>
+              No players match this filter.
             </div>
           )}
+          {sorted.map((r, i) => {
+            const p = r.player;
+            const accent = p.accentColor;
+            return (
+              <div
+                key={p.id}
+                onClick={() => setSelectedPlayer(p)}
+                style={{
+                  display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center',
+                  padding: '10px 20px',
+                  borderBottom: i < sorted.length - 1 ? '1px solid rgba(30,60,120,0.15)' : 'none',
+                  cursor: 'pointer', transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = `${accent}0d`; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                {/* Player cell — avatar + name + (live/AI) badge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  {p.image
+                    ? <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: `2px solid ${accent}55`, flexShrink: 0 }}><img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} alt={p.name} /></div>
+                    : <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${accent}22`, border: `2px solid ${accent}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 13, color: accent, flexShrink: 0 }}>{p.number}</div>
+                  }
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+                    <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: p.isLive ? '#06d6a0' : 'rgba(218,218,218,0.4)' }}>
+                      {p.isLive ? 'LIVE EA' : (p.eaUser ? 'AWAITING SCRAPE' : 'AI')}
+                    </div>
+                  </div>
+                </div>
+                {/* All other columns rendered from the columns[] config */}
+                {columns.slice(1).map((c) => (
+                  <div key={c.key} style={{
+                    fontFamily: c.key === 'overall' ? 'Anton, sans-serif' : 'Roboto, sans-serif',
+                    fontSize: c.key === 'overall' ? 17 : 12,
+                    fontWeight: c.key === 'overall' ? 400 : 600,
+                    color: sortKey === c.key ? accent : '#fff',
+                    textAlign: c.align as any,
+                    letterSpacing: '0.04em',
+                  }}>
+                    {cellText(r, c.key)}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer note */}
+        <div style={{ marginTop: 12, fontFamily: 'Roboto, sans-serif', fontSize: 10, color: 'rgba(218,218,218,0.45)', lineHeight: 1.6 }}>
+          Live EA numbers are pulled every 10 minutes from the official Pro Clubs API. AI characters carry hand-authored mock numbers; columns marked "—" don't apply to them. Click any column header to sort, click a row for the full profile.
         </div>
       </div>
     </div>);
@@ -2640,8 +2794,14 @@ const StoreCard = ({ item }) => {
         {imgs.length > 0 ? (
           <React.Fragment>
             {imgs.map((src, i) => (
-              <img key={src} src={src} alt={item.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', opacity: i === imgIdx ? 1 : 0, transition: 'opacity 0.5s', transform: hov ? 'scale(1.04)' : 'scale(1)', transitionProperty: 'opacity, transform', transitionDuration: '0.5s, 0.6s' }} />
+              <img key={src} src={src} alt={item.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', opacity: i === imgIdx ? 1 : 0, transition: 'opacity 0.5s', transform: hov ? 'scale(1.04)' : 'scale(1)', transitionProperty: 'opacity, transform', transitionDuration: '0.5s, 0.6s', filter: item.soldOut ? 'blur(14px) saturate(1.2) brightness(0.55)' : undefined }} />
             ))}
+            {/* Sold-out treatment: diagonal stripes overlay so the product is
+                obscured but its silhouette / colour still reads. The "SOLD OUT"
+                banner sits above this. */}
+            {item.soldOut && (
+              <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse at center, transparent 0%, ${item.clr === 'var(--accent)' ? 'rgba(228,0,43,0.18)' : item.clr + '22'} 100%), repeating-linear-gradient(45deg, rgba(3,8,16,0.18) 0 8px, transparent 8px 16px)`, mixBlendMode: 'overlay' }} />
+            )}
           </React.Fragment>
         ) : item.placeholderSrc ? (
           <React.Fragment>
@@ -3214,7 +3374,7 @@ const AdminPage = ({ setPage }) => {
     { id: 'news',      label: 'News Articles', ready: true  },
     { id: 'transfers', label: 'Transfers',     ready: true  },
     { id: 'store',     label: 'Store Items',   ready: true  },
-    { id: 'players',   label: 'Player Lore',   ready: false },
+    { id: 'players',   label: 'Player Lore',   ready: true  },
   ];
 
   return (
@@ -3244,14 +3404,7 @@ const AdminPage = ({ setPage }) => {
         {tab === 'news'      && <AdminNewsPanel />}
         {tab === 'transfers' && <AdminTransfersPanel />}
         {tab === 'store'     && <AdminStorePanel />}
-        {tab !== 'invites' && tab !== 'news' && tab !== 'transfers' && tab !== 'store' && (
-          <div style={{ background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '40px 28px', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 8 }}>Coming soon</div>
-            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.7)', lineHeight: 1.6, maxWidth: 560, margin: '0 auto' }}>
-              {tab === 'players' && 'Edit the static parts of player profiles — archetype, lore, tags, accent colour, kit number. Live stats from EA stay untouched.'}
-            </div>
-          </div>
-        )}
+        {tab === 'players'   && <AdminPlayerLorePanel />}
       </div>
     </div>
   );
@@ -4218,6 +4371,454 @@ const AdminStorePanel = () => {
   );
 };
 
+
+// ── ADMIN: Player Lore panel ─────────────────────────────────────
+// Edits the static parts of every player profile (identity, archetype,
+// lore, attributes, accent, image, timeline, mock career numbers).
+// Live EA stats are kept untouched — for human players (ea_user set)
+// the goals/assists/apps shown on the front-end are always overridden
+// at read time by the scraper's member_state numbers.
+const POSITION_PRESETS = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'CF', 'ST'];
+const RARITY_PRESETS   = ['common', 'rare', 'legend', 'icon'];
+const OUTFIELD_KEYS    = ['PAC','SHO','PAS','DRI','DEF','PHY'];
+const GK_KEYS          = ['DIV','HAN','KIC','REF','SPD','POS'];
+
+const AdminPlayerLorePanel = () => {
+  const auth = useAuth();
+  const [rows, setRows]       = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr]         = React.useState(null);
+  const [busy, setBusy]       = React.useState(false);
+  const [editingId, setEditingId] = React.useState/* :null|'new'|string */(null);
+  const [uploading, setUploading] = React.useState(false);
+
+  const blankStats = (pos) => {
+    const keys = pos === 'GK' ? GK_KEYS : OUTFIELD_KEYS;
+    return Object.fromEntries(keys.map((k) => [k, 70]));
+  };
+  const blankForm = {
+    id: '', name: '', short_name: '', number: '', ea_user: '',
+    position: 'CM', rating: '70', rarity: 'common', nationality: '',
+    stats: blankStats('CM'),
+    mock_goals: '', mock_apps: '', mock_assists: '', mock_clean_sheets: '',
+    tags: /* :string[] */ [],
+    accent_color: '#E4002B', glow_color: '',
+    archetype: '', lore: '',
+    timeline: /* :{era,note}[] */ [],
+    image: '',
+    sort_order: '100', visible: true,
+  };
+  const [form, setForm] = React.useState(blankForm);
+
+  const fetchRows = React.useCallback(async () => {
+    setLoading(true);
+    const sb = (await import('./supabase')).getSupabase();
+    if (!sb) { setErr('No backend connection.'); setLoading(false); return; }
+    const { data, error } = await sb
+      .from('players')
+      .select('id, name, short_name, number, ea_user, position, rating, rarity, image, sort_order, visible, updated_at')
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+    if (error) setErr(error.message);
+    setRows(data || []);
+    setLoading(false);
+  }, []);
+  React.useEffect(() => { fetchRows(); }, [fetchRows]);
+
+  const openNew = () => {
+    setForm({ ...blankForm, sort_order: String((rows.at(-1)?.sort_order ?? 100) + 10) });
+    setEditingId('new');
+    setErr(null);
+  };
+  const openEdit = async (row) => {
+    // Fetch the full row (list query only pulls the columns shown in the table).
+    const sb = (await import('./supabase')).getSupabase();
+    const { data, error } = await sb.from('players').select('*').eq('id', row.id).maybeSingle();
+    if (error || !data) { setErr(error?.message || 'Player not found.'); return; }
+    setForm({
+      id: data.id ?? '',
+      name: data.name ?? '',
+      short_name: data.short_name ?? '',
+      number: data.number == null ? '' : String(data.number),
+      ea_user: data.ea_user ?? '',
+      position: data.position ?? 'CM',
+      rating: String(data.rating ?? 70),
+      rarity: data.rarity ?? 'common',
+      nationality: data.nationality ?? '',
+      stats: { ...blankStats(data.position ?? 'CM'), ...(data.stats || {}) },
+      mock_goals:        data.mock_goals        == null ? '' : String(data.mock_goals),
+      mock_apps:         data.mock_apps         == null ? '' : String(data.mock_apps),
+      mock_assists:      data.mock_assists      == null ? '' : String(data.mock_assists),
+      mock_clean_sheets: data.mock_clean_sheets == null ? '' : String(data.mock_clean_sheets),
+      tags: Array.isArray(data.tags) ? data.tags.slice() : [],
+      accent_color: data.accent_color ?? '#E4002B',
+      glow_color: data.glow_color ?? '',
+      archetype: data.archetype ?? '',
+      lore: data.lore ?? '',
+      timeline: Array.isArray(data.timeline) ? data.timeline.slice() : [],
+      image: data.image ?? '',
+      sort_order: String(data.sort_order ?? 100),
+      visible: data.visible !== false,
+    });
+    setEditingId(row.id);
+    setErr(null);
+  };
+  const cancelEdit = () => { setEditingId(null); setErr(null); };
+
+  // When position toggles between GK / outfield we swap the stat key set.
+  const onPositionChange = (next) => {
+    setForm((f) => {
+      const wasGK  = f.position === 'GK';
+      const willGK = next === 'GK';
+      if (wasGK !== willGK) return { ...f, position: next, stats: blankStats(next) };
+      return { ...f, position: next };
+    });
+  };
+  const setStat = (key, value) => setForm((f) => ({ ...f, stats: { ...f.stats, [key]: Number(value) || 0 } }));
+
+  // Tag chip editor.
+  const [tagDraft, setTagDraft] = React.useState('');
+  const addTag = () => {
+    const t = tagDraft.trim();
+    if (!t) return;
+    setForm((f) => ({ ...f, tags: f.tags.includes(t) ? f.tags : [...f.tags, t] }));
+    setTagDraft('');
+  };
+  const removeTag = (t) => setForm((f) => ({ ...f, tags: f.tags.filter((x) => x !== t) }));
+
+  // Timeline editor — list of { era, note }.
+  const setTimelineAt = (idx, key, value) => setForm((f) => {
+    const next = f.timeline.slice();
+    next[idx] = { ...next[idx], [key]: value };
+    return { ...f, timeline: next };
+  });
+  const addTimelineRow = () => setForm((f) => ({ ...f, timeline: [...f.timeline, { era: '', note: '' }] }));
+  const removeTimelineAt = (idx) => setForm((f) => ({ ...f, timeline: f.timeline.filter((_, i) => i !== idx) }));
+  const moveTimeline = (idx, dir) => setForm((f) => {
+    const next = f.timeline.slice();
+    const j = idx + dir;
+    if (j < 0 || j >= next.length) return f;
+    [next[idx], next[j]] = [next[j], next[idx]];
+    return { ...f, timeline: next };
+  });
+
+  const onUploadImage = async (file) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setErr('Image is over 5 MB — pick a smaller one.'); return; }
+    setUploading(true); setErr(null);
+    try {
+      const sb = (await import('./supabase')).getSupabase();
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').toLowerCase();
+      const path = `${Date.now()}-${safe}`;
+      const { error: upErr } = await sb.storage.from('player-images').upload(path, file, { upsert: false, contentType: file.type });
+      if (upErr) { setErr(`Upload failed: ${upErr.message}`); return; }
+      const { data } = sb.storage.from('player-images').getPublicUrl(path);
+      setForm((f) => ({ ...f, image: data.publicUrl }));
+    } finally { setUploading(false); }
+  };
+
+  // Auto-derive a slug-ish ID from the name when creating, but only if the
+  // user hasn't typed one in yet.
+  const suggestId = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 40);
+
+  const save = async () => {
+    setErr(null);
+    if (!form.name.trim())       { setErr('Name is required.');       return; }
+    if (!form.short_name.trim()) { setErr('Short name is required.'); return; }
+    const ratingNum = Number(form.rating);
+    if (Number.isNaN(ratingNum) || ratingNum < 0 || ratingNum > 99) { setErr('Rating must be 0–99.'); return; }
+    const sortNum = Number(form.sort_order);
+    if (Number.isNaN(sortNum)) { setErr('Sort order must be a number.'); return; }
+
+    const idVal = (editingId === 'new' ? (form.id.trim() || suggestId(form.name)) : String(editingId));
+    if (!idVal) { setErr('Player ID is required.'); return; }
+    if (!/^[a-z0-9_-]+$/.test(idVal)) { setErr('Player ID can only contain lowercase letters, numbers, dashes and underscores.'); return; }
+
+    const numToCol = (v) => (v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+
+    setBusy(true);
+    const sb = (await import('./supabase')).getSupabase();
+    const payload = {
+      name:         form.name.trim(),
+      short_name:   form.short_name.trim(),
+      number:       numToCol(form.number),
+      ea_user:      form.ea_user.trim() || null,
+      position:     form.position,
+      rating:       ratingNum,
+      rarity:       form.rarity,
+      nationality:  form.nationality.trim() || null,
+      stats:        form.stats,
+      mock_goals:        numToCol(form.mock_goals),
+      mock_apps:         numToCol(form.mock_apps),
+      mock_assists:      numToCol(form.mock_assists),
+      mock_clean_sheets: numToCol(form.mock_clean_sheets),
+      tags:         form.tags,
+      accent_color: form.accent_color.trim() || '#E4002B',
+      glow_color:   form.glow_color.trim() || null,
+      archetype:    form.archetype.trim(),
+      lore:         form.lore,
+      timeline:     form.timeline.filter((t) => (t.era || '').trim() || (t.note || '').trim()),
+      image:        form.image.trim() || null,
+      sort_order:   sortNum,
+      visible:      form.visible,
+    };
+    let error;
+    if (editingId === 'new') {
+      ({ error } = await sb.from('players').insert({ id: idVal, ...payload, created_by: auth.user?.id ?? null }));
+    } else {
+      ({ error } = await sb.from('players').update(payload).eq('id', idVal));
+    }
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    invalidateLivePlayers();
+    setEditingId(null);
+    fetchRows();
+  };
+
+  const remove = async (row) => {
+    if (!confirm(`Delete "${row.name}"? This can't be undone.`)) return;
+    const sb = (await import('./supabase')).getSupabase();
+    const { error } = await sb.from('players').delete().eq('id', row.id);
+    if (error) { setErr(error.message); return; }
+    invalidateLivePlayers();
+    fetchRows();
+  };
+
+  const statKeys = form.position === 'GK' ? GK_KEYS : OUTFIELD_KEYS;
+  const isHuman = !!form.ea_user.trim();
+
+  if (editingId !== null) {
+    return (
+      <div style={{ display: 'grid', gap: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{editingId === 'new' ? 'New player' : 'Edit player'}</div>
+          <button onClick={cancelEdit} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(218,218,218,0.65)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '8px 14px', borderRadius: 4, textTransform: 'uppercase' }}>← Back to list</button>
+        </div>
+
+        {/* Identity */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 0.8fr', gap: 14 }}>
+          <Field label="Name" required>
+            <input type="text" placeholder="Amir Panikova" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Short name" required>
+            <input type="text" placeholder="PANIKOVA" value={form.short_name} onChange={(e) => setForm({ ...form, short_name: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Player ID (slug)">
+            <input type="text" placeholder={form.name ? suggestId(form.name) : 'panikova'} value={form.id} disabled={editingId !== 'new'} onChange={(e) => setForm({ ...form, id: e.target.value })} style={{ ...inputStyle, opacity: editingId !== 'new' ? 0.55 : 1 }} />
+          </Field>
+          <Field label="Kit number">
+            <input type="number" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} style={inputStyle} />
+          </Field>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.8fr 0.8fr 0.8fr', gap: 14 }}>
+          <Field label="EA Pro Clubs Gamertag (humans only — leave blank for AI characters)">
+            <input type="text" placeholder="e.g. NoticeMeSenpepe" value={form.ea_user} onChange={(e) => setForm({ ...form, ea_user: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Position">
+            <select value={form.position} onChange={(e) => onPositionChange(e.target.value)} style={inputStyle}>
+              {POSITION_PRESETS.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </Field>
+          <Field label="Rating (0–99)">
+            <input type="number" min="0" max="99" value={form.rating} onChange={(e) => setForm({ ...form, rating: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Rarity">
+            <select value={form.rarity} onChange={(e) => setForm({ ...form, rarity: e.target.value })} style={inputStyle}>
+              {RARITY_PRESETS.map((r) => <option key={r} value={r}>{r.toUpperCase()}</option>)}
+            </select>
+          </Field>
+          <Field label="Nationality (code or 🌟)">
+            <input type="text" placeholder="ENG / RU / 🌟" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} style={inputStyle} />
+          </Field>
+        </div>
+
+        {/* Six-key attribute grid */}
+        <Field label={`Attributes (${form.position === 'GK' ? 'goalkeeper' : 'outfielder'} keys)`}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
+            {statKeys.map((k) => (
+              <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.6)' }}>{k}</div>
+                <input type="number" min="0" max="99" value={form.stats[k] ?? ''} onChange={(e) => setStat(k, e.target.value)} style={inputStyle} />
+              </div>
+            ))}
+          </div>
+        </Field>
+
+        {/* Image */}
+        <Field label="Player photo (portrait — head-and-shoulders works best)">
+          <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr auto', gap: 10, alignItems: 'center', background: 'rgba(8,15,30,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: 10 }}>
+            <div style={{ width: 90, height: 110, borderRadius: 4, background: 'rgba(0,0,0,0.4)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {form.image
+                ? <img src={form.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} onError={(e) => { (e.currentTarget).style.display = 'none'; }} />
+                : <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, color: 'rgba(218,218,218,0.4)' }}>No image</span>}
+            </div>
+            <input type="text" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="Paste URL/path or click Upload →" style={{ ...inputStyle, fontSize: 12 }} />
+            <label style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', cursor: uploading ? 'not-allowed' : 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', padding: '8px 12px', borderRadius: 3, textTransform: 'uppercase', whiteSpace: 'nowrap', opacity: uploading ? 0.5 : 1 }}>
+              {uploading ? '…' : 'Upload'}
+              <input type="file" accept="image/*" disabled={uploading} onChange={(e) => { onUploadImage(e.target.files?.[0]); e.target.value = ''; }} style={{ display: 'none' }} />
+            </label>
+          </div>
+        </Field>
+
+        {/* Mock career numbers + colours */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
+          <Field label="Career goals">
+            <input type="number" value={form.mock_goals} onChange={(e) => setForm({ ...form, mock_goals: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Career appearances">
+            <input type="number" value={form.mock_apps} onChange={(e) => setForm({ ...form, mock_apps: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Career assists">
+            <input type="number" value={form.mock_assists} onChange={(e) => setForm({ ...form, mock_assists: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Clean sheets (GK)">
+            <input type="number" value={form.mock_clean_sheets} onChange={(e) => setForm({ ...form, mock_clean_sheets: e.target.value })} style={inputStyle} />
+          </Field>
+        </div>
+        {isHuman && (
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(233,196,106,0.85)', background: 'rgba(233,196,106,0.08)', border: '1px solid rgba(233,196,106,0.25)', borderRadius: 4, padding: '8px 12px' }}>
+            This player has an EA Gamertag, so the front-end overrides the four numbers above with EA's live <em>member_state</em> stats. The values you set here only show until the first scrape lands.
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.6fr', gap: 14 }}>
+          <Field label="Accent colour (card border / glow)">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="color" value={form.accent_color} onChange={(e) => setForm({ ...form, accent_color: e.target.value })} style={{ width: 38, height: 38, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: 0, background: 'transparent', cursor: 'pointer' }} />
+              <input type="text" value={form.accent_color} onChange={(e) => setForm({ ...form, accent_color: e.target.value })} style={{ ...inputStyle, flex: 1, fontFamily: 'Roboto Mono, ui-monospace, monospace' }} />
+            </div>
+          </Field>
+          <Field label="Glow colour (optional rgba — leave blank to derive from accent)">
+            <input type="text" placeholder="rgba(255,34,68,0.45)" value={form.glow_color} onChange={(e) => setForm({ ...form, glow_color: e.target.value })} style={{ ...inputStyle, fontFamily: 'Roboto Mono, ui-monospace, monospace' }} />
+          </Field>
+          <Field label="Sort order">
+            <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} style={inputStyle} />
+          </Field>
+        </div>
+
+        {/* Tags */}
+        <Field label="Personality chips (shown on profile)">
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="text" value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }} placeholder="e.g. Aura Commander — press Enter to add" style={{ ...inputStyle, flex: 1 }} />
+              <button type="button" onClick={addTag} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', padding: '8px 14px', borderRadius: 3, textTransform: 'uppercase' }}>+ Add</button>
+            </div>
+            {form.tags.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {form.tags.map((t) => (
+                  <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 600, color: '#fff', background: 'rgba(228,0,43,0.18)', border: '1px solid rgba(228,0,43,0.4)', padding: '4px 8px', borderRadius: 12 }}>
+                    {t}
+                    <button type="button" onClick={() => removeTag(t)} title="Remove" style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </Field>
+
+        <Field label="Archetype (one-line role descriptor)">
+          <input type="text" placeholder="Aura Commander" value={form.archetype} onChange={(e) => setForm({ ...form, archetype: e.target.value })} style={inputStyle} />
+        </Field>
+
+        <Field label="Lore (the 1–2 sentence flavour text shown on the profile)">
+          <textarea rows={3} value={form.lore} onChange={(e) => setForm({ ...form, lore: e.target.value })} style={{ ...inputStyle, resize: 'vertical', minHeight: 70, padding: 10 }} />
+        </Field>
+
+        {/* Timeline */}
+        <Field label="Timeline (career chapters shown on the profile modal)">
+          <div style={{ display: 'grid', gap: 8 }}>
+            {form.timeline.length === 0 && (
+              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.5)' }}>No chapters yet. Add one below.</div>
+            )}
+            {form.timeline.map((entry, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '0.9fr 2fr auto auto auto', gap: 8, alignItems: 'center', background: 'rgba(8,15,30,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: 8 }}>
+                <input type="text" value={entry.era || ''} onChange={(e) => setTimelineAt(i, 'era', e.target.value)} placeholder="The Awakening" style={{ ...inputStyle, fontSize: 12 }} />
+                <input type="text" value={entry.note || ''} onChange={(e) => setTimelineAt(i, 'note', e.target.value)} placeholder="What happened in this chapter" style={{ ...inputStyle, fontSize: 12 }} />
+                <button type="button" onClick={() => moveTimeline(i, -1)} disabled={i === 0} title="Move up"
+                        style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: i === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(218,218,218,0.65)', cursor: i === 0 ? 'not-allowed' : 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 12, padding: '6px 8px', borderRadius: 3 }}>↑</button>
+                <button type="button" onClick={() => moveTimeline(i, 1)} disabled={i === form.timeline.length - 1} title="Move down"
+                        style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: i === form.timeline.length - 1 ? 'rgba(255,255,255,0.2)' : 'rgba(218,218,218,0.65)', cursor: i === form.timeline.length - 1 ? 'not-allowed' : 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 12, padding: '6px 8px', borderRadius: 3 }}>↓</button>
+                <button type="button" onClick={() => removeTimelineAt(i)} title="Remove"
+                        style={{ background: 'transparent', border: '1px solid rgba(228,0,43,0.4)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', padding: '6px 10px', borderRadius: 3, textTransform: 'uppercase' }}>×</button>
+              </div>
+            ))}
+            <div>
+              <button type="button" onClick={addTimelineRow}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px dashed rgba(255,255,255,0.2)', color: 'rgba(218,218,218,0.85)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '8px 14px', borderRadius: 4, textTransform: 'uppercase' }}>+ Add chapter</button>
+            </div>
+          </div>
+        </Field>
+
+        <div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.visible} onChange={(e) => setForm({ ...form, visible: e.target.checked })} />
+            <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: '#fff' }}>Visible on the public squad</span>
+          </label>
+        </div>
+
+        {err && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)' }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={cancelEdit} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(218,218,218,0.65)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '10px 16px', borderRadius: 4, textTransform: 'uppercase' }}>Cancel</button>
+          <button onClick={save} disabled={busy || !form.name.trim() || !form.short_name.trim()}
+                  style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.16em', padding: '10px 18px', borderRadius: 4, textTransform: 'uppercase', whiteSpace: 'nowrap', opacity: (busy || !form.name.trim() || !form.short_name.trim()) ? 0.5 : 1 }}>
+            {busy ? '…' : (editingId === 'new' ? 'Publish →' : 'Save changes →')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.6)' }}>{rows.length} player{rows.length === 1 ? '' : 's'} in the squad.</div>
+        <button onClick={openNew} style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.16em', padding: '10px 18px', borderRadius: 4, textTransform: 'uppercase' }}>+ New player</button>
+      </div>
+      {err && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)' }}>{err}</div>}
+      <div style={{ background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '60px 2fr 0.6fr 0.6fr 0.8fr 0.9fr 0.7fr', alignItems: 'center', padding: '10px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}>
+          {['', 'Name', '#', 'POS', 'Rarity', 'Flags', 'Actions'].map((h, i) => (
+            <div key={i} style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>{h}</div>
+          ))}
+        </div>
+        {loading && <div style={{ padding: 20, fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>Loading…</div>}
+        {!loading && rows.length === 0 && (
+          <div style={{ padding: 20, fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>No players yet. The Squad page is showing the prototype's hard-coded fallback. Click "+ New player" or run the migration to add real ones.</div>
+        )}
+        {rows.map((r, i) => (
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '60px 2fr 0.6fr 0.6fr 0.8fr 0.9fr 0.7fr', alignItems: 'center', padding: '12px 18px', borderBottom: i < rows.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+            <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+              {r.image
+                ? <img src={r.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} onError={(e) => { (e.currentTarget).style.display = 'none'; }} />
+                : null}
+            </div>
+            <div>
+              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, color: 'rgba(218,218,218,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {r.ea_user ? `EA: ${r.ea_user}` : 'AI character'} · ID {r.id}
+              </div>
+            </div>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff' }}>{r.number ?? '—'}</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.7)' }}>{r.position}</div>
+            <div>
+              <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: '#fff', background: r.rarity === 'icon' ? '#e6a817' : r.rarity === 'legend' ? '#9b5de5' : r.rarity === 'rare' ? '#4361ee' : 'rgba(80,110,160,0.5)', padding: '3px 8px', borderRadius: 2, textTransform: 'uppercase' }}>{(r.rarity || 'common').toUpperCase()}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+              {r.ea_user && <span style={{ color: '#06d6a0', background: 'rgba(6,214,160,0.12)', padding: '2px 6px', borderRadius: 2 }}>HUMAN</span>}
+              {!r.ea_user && <span style={{ color: 'rgba(218,218,218,0.55)', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 2 }}>AI</span>}
+              {!r.visible && <span style={{ color: 'rgba(218,218,218,0.5)', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 2 }}>HIDDEN</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => openEdit(r)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(218,218,218,0.8)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>Edit</button>
+              <button onClick={() => remove(r)} style={{ background: 'transparent', border: '1px solid rgba(228,0,43,0.4)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 // ── BASKET PAGE ─────────────────────────────────────────────────
 const BasketPage = ({ setPage }) => {

@@ -216,12 +216,43 @@ export interface LiveMemberStats {
   goals: number;
   assists: number;
   gamesPlayed: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  winPercent: number | null;        // 0–100
+  passesMade: number;
+  passAttempts: number;
+  passSuccessPct: number | null;    // 0–100
+  tacklesMade: number;
+  tackleAttempts: number;
+  tackleSuccessPct: number | null;  // 0–100
+  shotSuccessPct: number | null;    // 0–100
+  cleanSheetsAny: number;
+  redCards: number;
   manOfTheMatch: number;
   ratingAverage: number | null;
   proOverall: number | null;
   proName: string | null;
   favoritePosition: string | null;
   fetchedAt: string;
+}
+
+/** EA's `members/stats` endpoint returns most rates as raw 0–100 numbers,
+ *  but some payloads omit the rate and only return the base counts. This
+ *  helper picks a rate field if present, else computes one from the
+ *  numerator + denominator. Returns null when neither path yields a value. */
+function pickRate(blob: Record<string, unknown>, rateKeys: string[], madeKey: string, attemptsKey: string): number | null {
+  const direct = pick(blob, rateKeys, num);
+  if (direct !== null) {
+    // EA sometimes returns 0–1, sometimes 0–100. Detect and normalise.
+    return direct <= 1 ? Math.round(direct * 100) : Math.round(direct);
+  }
+  const made = num(blob[madeKey]);
+  const attempts = num(blob[attemptsKey]);
+  if (made !== null && attempts !== null && attempts > 0) {
+    return Math.round((made / attempts) * 100);
+  }
+  return null;
 }
 
 export async function getLiveMembersByEaUser(): Promise<Map<string, LiveMemberStats>> {
@@ -237,11 +268,32 @@ export async function getLiveMembersByEaUser(): Promise<Map<string, LiveMemberSt
   for (const row of data) {
     const blob = (row.data || {}) as Record<string, unknown>;
     const stats = (blob.stats || {}) as Record<string, unknown>;
+
+    const games  = pick(stats, ['gamesPlayed'], num) ?? 0;
+    const wins   = pick(stats, ['wins'], num) ?? 0;
+    const losses = pick(stats, ['losses'], num) ?? 0;
+    const draws  = pick(stats, ['ties', 'draws'], num) ?? 0;
+    const winPct = pick(stats, ['winRate', 'winPercent', 'winPct'], num)
+      ?? (games > 0 ? Math.round((wins / games) * 100) : null);
+
     out.set((row.name as string).toLowerCase(), {
       gamertag: row.name as string,
       goals:         pick(stats, ['goals'], num)         ?? 0,
       assists:       pick(stats, ['assists'], num)       ?? 0,
-      gamesPlayed:   pick(stats, ['gamesPlayed'], num)   ?? 0,
+      gamesPlayed:   games,
+      wins,
+      losses,
+      draws,
+      winPercent: winPct,
+      passesMade:    pick(stats, ['passesMade'], num)    ?? 0,
+      passAttempts:  pick(stats, ['passAttempts'], num)  ?? 0,
+      passSuccessPct: pickRate(stats, ['passSuccessRate', 'passSuccessPct', 'passsuccessrate'], 'passesMade', 'passAttempts'),
+      tacklesMade:   pick(stats, ['tacklesMade'], num)   ?? 0,
+      tackleAttempts: pick(stats, ['tackleAttempts'], num) ?? 0,
+      tackleSuccessPct: pickRate(stats, ['tackleSuccessRate', 'tackleSuccessPct', 'tacklesuccessrate'], 'tacklesMade', 'tackleAttempts'),
+      shotSuccessPct:   pickRate(stats, ['shotSuccessRate', 'shotSuccessPct'], 'goals', 'shots'),
+      cleanSheetsAny: pick(stats, ['cleanSheetsAny', 'cleanSheets'], num) ?? 0,
+      redCards:      pick(stats, ['redCards'], num)      ?? 0,
       manOfTheMatch: pick(stats, ['manOfTheMatch'], num) ?? 0,
       ratingAverage: pick(stats, ['ratingAve'], num),
       proOverall:    pick(stats, ['proOverall'], num),
@@ -633,6 +685,73 @@ export async function getLiveStoreItems(): Promise<StoreItem[]> {
     sortOrder: (r.sort_order as number) ?? 100,
     visible: r.visible !== false,
     featured: Boolean(r.featured),
+  }));
+}
+
+// ── Players (admin-managed lore + static profile data) ───────────────
+
+export interface LivePlayer {
+  id: string;
+  name: string;
+  shortName: string;
+  number: number | null;
+  eaUser: string | null;
+  position: string;
+  rating: number;
+  rarity: string;
+  nationality: string | null;
+  stats: Record<string, number>;
+  // Static / mock career numbers. For human players these get overridden
+  // at read time by EA's live `member_state` numbers (merged in by the
+  // `useLivePlayers` hook). For AI characters they're the only source.
+  goals: number;
+  apps: number;
+  assists: number;
+  cleanSheets: number | null;
+  tags: string[];
+  accentColor: string;
+  glowColor: string | null;
+  archetype: string;
+  lore: string;
+  timeline: { era: string; note: string }[];
+  image: string | null;
+  sortOrder: number;
+  visible: boolean;
+}
+
+export async function getLivePlayers(): Promise<LivePlayer[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from('players')
+    .select('id, name, short_name, number, ea_user, position, rating, rarity, nationality, stats, mock_goals, mock_apps, mock_assists, mock_clean_sheets, tags, accent_color, glow_color, archetype, lore, timeline, image, sort_order, visible')
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error || !data) return [];
+  return data.map((r): LivePlayer => ({
+    id: r.id as string,
+    name: (r.name as string) || '',
+    shortName: (r.short_name as string) || '',
+    number: (r.number as number | null) ?? null,
+    eaUser: (r.ea_user as string | null) ?? null,
+    position: (r.position as string) || 'CM',
+    rating: (r.rating as number) ?? 70,
+    rarity: (r.rarity as string) || 'common',
+    nationality: (r.nationality as string | null) ?? null,
+    stats: (r.stats as Record<string, number>) ?? {},
+    goals:       (r.mock_goals       as number | null) ?? 0,
+    apps:        (r.mock_apps        as number | null) ?? 0,
+    assists:     (r.mock_assists     as number | null) ?? 0,
+    cleanSheets: (r.mock_clean_sheets as number | null) ?? null,
+    tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+    accentColor: (r.accent_color as string) || '#E4002B',
+    glowColor: (r.glow_color as string | null) ?? null,
+    archetype: (r.archetype as string) || '',
+    lore: (r.lore as string) || '',
+    timeline: Array.isArray(r.timeline) ? (r.timeline as { era: string; note: string }[]) : [],
+    image: (r.image as string | null) ?? null,
+    sortOrder: (r.sort_order as number) ?? 100,
+    visible: r.visible !== false,
   }));
 }
 
