@@ -1338,13 +1338,15 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
               {h.image && (
                 <div
                   className="sbc-hero-news-image sbc-glow-panel"
-                  // Reuse the site's accent-colored panel pattern: --panel-color
+                  // Square panel (1:1). Most news images are 1254x1254 so they
+                  // fill it natively; any non-square images (e.g. the 4:3
+                  // bus-dog photo) crop slightly via objectFit:cover. Reuses
+                  // the site's accent-coloured panel pattern: --panel-color
                   // drives both the border and the on-hover glow via the
-                  // existing .sbc-glow-panel CSS rules. Black background fills
-                  // the letterbox bands when objectFit:contain leaves space.
+                  // existing .sbc-glow-panel CSS rules.
                   style={{
                     '--panel-color': h.color,
-                    width: '100%', maxWidth: 560, aspectRatio: '16 / 9',
+                    width: '100%', maxWidth: 400, aspectRatio: '1 / 1',
                     borderRadius: 6, overflow: 'hidden',
                     border: `1px solid ${h.color}`,
                     background: '#030810',
@@ -1356,7 +1358,7 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
                     src={h.image}
                     alt={h.text}
                     onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   />
                 </div>
               )}
