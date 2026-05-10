@@ -25,6 +25,10 @@ export interface AuthApi {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
+  /** True when the auth system has detected the user landed via a
+   *  password-reset email link. Stays true until they set a new
+   *  password (or sign out). UI should switch to "set new password". */
+  recoveryMode: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, displayName: string, inviteCode: string) =>
     Promise<{ error: string | null; needsEmailConfirmation: boolean }>;
@@ -33,6 +37,14 @@ export interface AuthApi {
   saveTweaks: (tweaks: Record<string, unknown>) => Promise<void>;
   validateInviteCode: (code: string) => Promise<boolean>;
   reloadProfile: () => Promise<void>;
+  /** Sends a password-reset email to the address. Errors return the message;
+   *  null on success. The link points back to this site. */
+  requestPasswordReset: (email: string) => Promise<{ error: string | null }>;
+  /** Sets a new password for the currently-authenticated user. Used during
+   *  the recovery flow after the user clicks the email link. */
+  applyNewPassword: (newPassword: string) => Promise<{ error: string | null }>;
+  /** Manually exit recoveryMode (e.g. when user clicks "cancel"). */
+  clearRecoveryMode: () => void;
 }
 
 /**
@@ -45,6 +57,7 @@ export function useAuth(): AuthApi {
   const [user, setUser]       = React.useState<User | null>(null);
   const [profile, setProfile] = React.useState<UserProfile | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [recoveryMode, setRecoveryMode] = React.useState(false);
 
   // Latest user is captured in a ref so action functions don't need to
   // re-create when state changes.
@@ -78,11 +91,17 @@ export function useAuth(): AuthApi {
       setLoading(false);
     });
 
-    const { data: { subscription } } = sb.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
       const u = session?.user ?? null;
       setUser(u);
       const p = await loadProfile(u);
       setProfile(p);
+      // Supabase fires PASSWORD_RECOVERY when a user lands via a reset link.
+      // We flip into recovery mode so the AccountPage shows a "set new
+      // password" form instead of the normal profile view.
+      if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
+      // Once they actually update their password OR sign out, exit recovery.
+      if (event === 'USER_UPDATED' || event === 'SIGNED_OUT') setRecoveryMode(false);
     });
 
     return () => { cancelled = true; subscription.unsubscribe(); };
@@ -149,10 +168,32 @@ export function useAuth(): AuthApi {
     return Boolean(data);
   };
 
+  const requestPasswordReset: AuthApi['requestPasswordReset'] = async (email) => {
+    if (!sb) return { error: 'Password reset unavailable (no backend connection).' };
+    const trimmed = email.trim();
+    if (!trimmed) return { error: 'Please enter the email you signed up with.' };
+    const { error } = await sb.auth.resetPasswordForEmail(trimmed, {
+      redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+    });
+    return { error: error?.message ?? null };
+  };
+
+  const applyNewPassword: AuthApi['applyNewPassword'] = async (newPassword) => {
+    if (!sb) return { error: 'Cannot update password right now.' };
+    if (newPassword.length < 6) return { error: 'Password must be at least 6 characters.' };
+    const { error } = await sb.auth.updateUser({ password: newPassword });
+    if (error) return { error: friendlyAuthError(error.message) };
+    setRecoveryMode(false);
+    return { error: null };
+  };
+
+  const clearRecoveryMode: AuthApi['clearRecoveryMode'] = () => setRecoveryMode(false);
+
   return {
-    user, profile, loading,
+    user, profile, loading, recoveryMode,
     signIn, signUp, signOut,
     updateDisplayName, saveTweaks, validateInviteCode, reloadProfile,
+    requestPasswordReset, applyNewPassword, clearRecoveryMode,
   };
 }
 
@@ -164,7 +205,9 @@ function friendlyAuthError(raw: string): string {
   if (m.includes('display name is required'))            return 'Please pick a display name.';
   if (m.includes('user already registered'))             return 'An account with this email already exists.';
   if (m.includes('password should be at least'))         return 'Password is too short — use at least 6 characters.';
-  if (m.includes('invalid login credentials'))           return 'Wrong email or password.';
+  if (m.includes('invalid login credentials'))           return 'Wrong email or password. (If you just signed up, also check your email and click the confirmation link first.)';
   if (m.includes('email not confirmed'))                 return 'Please click the confirmation link in your email before signing in.';
+  if (m.includes('user not found'))                      return 'No account found with that email.';
+  if (m.includes('rate limit'))                          return 'Too many attempts — wait a minute and try again.';
   return raw;
 }

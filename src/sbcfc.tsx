@@ -2623,6 +2623,17 @@ const AccountPage = ({ setPage }) => {
   const [busy, setBusy] = React.useState(false);
   const [editingName, setEditingName] = React.useState(false);
   const [draftName, setDraftName] = React.useState('');
+  // Forgot-password flow.
+  const [forgotMode, setForgotMode] = React.useState(false);
+  const [forgotEmail, setForgotEmail] = React.useState('');
+  const [forgotError, setForgotError] = React.useState(null);
+  const [forgotSent, setForgotSent] = React.useState(false);
+  // Set-new-password (recovery) flow — triggered by Supabase when user
+  // lands via a reset email link.
+  const [newPwd, setNewPwd] = React.useState('');
+  const [newPwdConfirm, setNewPwdConfirm] = React.useState('');
+  const [newPwdError, setNewPwdError] = React.useState(null);
+  const [newPwdSuccess, setNewPwdSuccess] = React.useState(false);
   const tabs = ['PROFILE', 'BASKET', 'ORDERS', 'TICKETS', 'PREFERENCES'];
 
   const handleSignIn = async (e) => {
@@ -2656,11 +2667,73 @@ const AccountPage = ({ setPage }) => {
     setEditingName(false);
   };
 
+  const handleSendReset = async (e) => {
+    e?.preventDefault?.();
+    setForgotError(null);
+    setBusy(true);
+    const { error } = await auth.requestPasswordReset(forgotEmail);
+    setBusy(false);
+    if (error) { setForgotError(error); return; }
+    setForgotSent(true);
+  };
+
+  const handleSetNewPassword = async (e) => {
+    e?.preventDefault?.();
+    setNewPwdError(null);
+    if (newPwd !== newPwdConfirm) { setNewPwdError('Both passwords need to match.'); return; }
+    setBusy(true);
+    const { error } = await auth.applyNewPassword(newPwd);
+    setBusy(false);
+    if (error) { setNewPwdError(error); return; }
+    setNewPwdSuccess(true);
+    setNewPwd(''); setNewPwdConfirm('');
+  };
+
   const memberSinceLabel = (iso) => {
     if (!iso) return '—';
     const d = new Date(iso);
     return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   };
+
+  // ── Recovery (set new password) — takes priority over everything else
+  // because the user has clicked a one-time email link and we want them to
+  // pick a new password before doing anything else.
+  if (auth.recoveryMode) {
+    return (
+      <div style={{ background: 'transparent', minHeight: '100vh' }}>
+        <AccountPageHeader subtitle="Almost done" title="SET A NEW PASSWORD" />
+        <RainbowBar />
+        <div className="sbc-page-pad" style={{ padding: '64px 64px 96px', maxWidth: 520, margin: '0 auto' }}>
+          <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '28px 32px' }}>
+            {newPwdSuccess ? (
+              <>
+                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 14 }}>Password updated ✓</div>
+                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 14, color: 'rgba(218,218,218,0.75)', lineHeight: 1.6, marginBottom: 18 }}>
+                  Your new password is set and you're signed in.
+                </div>
+                <button onClick={() => { setNewPwdSuccess(false); auth.clearRecoveryMode(); }}
+                        style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.18em', padding: '12px 22px', borderRadius: 4, textTransform: 'uppercase' }}>Continue</button>
+              </>
+            ) : (
+              <form onSubmit={handleSetNewPassword}>
+                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 8 }}>Choose a new password</div>
+                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.65)', lineHeight: 1.6, marginBottom: 18 }}>
+                  Type a new password (at least 6 characters), then confirm it. Your old password will stop working as soon as this is saved.
+                </div>
+                <input type="password" required minLength={6} value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="New password"
+                       style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />
+                <input type="password" required minLength={6} value={newPwdConfirm} onChange={(e) => setNewPwdConfirm(e.target.value)} placeholder="Confirm new password"
+                       style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 16, boxSizing: 'border-box' }} />
+                {newPwdError && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)', marginBottom: 12 }}>{newPwdError}</div>}
+                <button type="submit" disabled={busy}
+                        style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 14, letterSpacing: '0.18em', padding: '14px 0', borderRadius: 4, textTransform: 'uppercase', opacity: busy ? 0.6 : 1 }}>{busy ? '…' : 'SAVE NEW PASSWORD →'}</button>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Guard: still loading the initial session ──
   if (auth.loading) {
@@ -2700,17 +2773,49 @@ const AccountPage = ({ setPage }) => {
         <AccountPageHeader subtitle="Members Area" title="JOIN THE CLIQUE" />
         <RainbowBar />
         <div className="sbc-page-pad" style={{ padding: '64px 64px 96px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, maxWidth: 980, margin: '0 auto' }}>
-          {/* Sign in */}
-          <form onSubmit={handleSignIn} style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '32px 32px 28px' }}>
-            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'rgba(218,218,218,0.5)', marginBottom: 8, textTransform: 'uppercase' }}>Already initiated</div>
-            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 32, color: '#fff', textTransform: 'uppercase', marginBottom: 18, letterSpacing: '0.04em' }}>Sign In</div>
-            <input type="email" placeholder="Email" required value={signInForm.email} onChange={(e) => setSignInForm({ ...signInForm, email: e.target.value })}
-                   style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />
-            <input type="password" placeholder="Password" required value={signInForm.password} onChange={(e) => setSignInForm({ ...signInForm, password: e.target.value })}
-                   style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 18, boxSizing: 'border-box' }} />
-            {signInError && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)', marginBottom: 12 }}>{signInError}</div>}
-            <button type="submit" disabled={busy} style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 14, letterSpacing: '0.18em', padding: '14px 0', borderRadius: 4, textTransform: 'uppercase', opacity: busy ? 0.6 : 1 }}>{busy ? '…' : 'SIGN IN →'}</button>
-          </form>
+          {/* Sign in / forgot-password — same card, two modes. */}
+          {forgotMode ? (
+            <form onSubmit={handleSendReset} style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '32px 32px 28px' }}>
+              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'rgba(218,218,218,0.5)', marginBottom: 8, textTransform: 'uppercase' }}>Reset access</div>
+              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 32, color: '#fff', textTransform: 'uppercase', marginBottom: 12, letterSpacing: '0.04em' }}>Forgot password</div>
+              {forgotSent ? (
+                <>
+                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.75)', lineHeight: 1.6, marginBottom: 18 }}>
+                    If an account exists for <strong style={{ color: '#fff' }}>{forgotEmail}</strong>, we've emailed it a reset link. Click it and you'll be brought back here to set a new password.
+                  </div>
+                  <button type="button" onClick={() => { setForgotMode(false); setForgotSent(false); setForgotEmail(''); setForgotError(null); }}
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '10px 16px', borderRadius: 4, textTransform: 'uppercase' }}>← Back to Sign In</button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.65)', lineHeight: 1.55, marginBottom: 14 }}>
+                    Enter the email you signed up with. We'll send you a link to set a new password.
+                  </div>
+                  <input type="email" placeholder="Email" required value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                         style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 16, boxSizing: 'border-box' }} />
+                  {forgotError && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)', marginBottom: 12 }}>{forgotError}</div>}
+                  <button type="submit" disabled={busy} style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 14, letterSpacing: '0.18em', padding: '14px 0', borderRadius: 4, textTransform: 'uppercase', opacity: busy ? 0.6 : 1, marginBottom: 10 }}>{busy ? '…' : 'SEND RESET LINK →'}</button>
+                  <button type="button" onClick={() => { setForgotMode(false); setForgotError(null); }}
+                          style={{ width: '100%', background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(218,218,218,0.65)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '10px 0', borderRadius: 4, textTransform: 'uppercase' }}>← Back to Sign In</button>
+                </>
+              )}
+            </form>
+          ) : (
+            <form onSubmit={handleSignIn} style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '32px 32px 28px' }}>
+              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'rgba(218,218,218,0.5)', marginBottom: 8, textTransform: 'uppercase' }}>Already initiated</div>
+              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 32, color: '#fff', textTransform: 'uppercase', marginBottom: 18, letterSpacing: '0.04em' }}>Sign In</div>
+              <input type="email" placeholder="Email" required value={signInForm.email} onChange={(e) => setSignInForm({ ...signInForm, email: e.target.value })}
+                     style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />
+              <input type="password" placeholder="Password" required value={signInForm.password} onChange={(e) => setSignInForm({ ...signInForm, password: e.target.value })}
+                     style={{ width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '12px 14px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, marginBottom: 18, boxSizing: 'border-box' }} />
+              {signInError && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)', marginBottom: 12 }}>{signInError}</div>}
+              <button type="submit" disabled={busy} style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 14, letterSpacing: '0.18em', padding: '14px 0', borderRadius: 4, textTransform: 'uppercase', opacity: busy ? 0.6 : 1 }}>{busy ? '…' : 'SIGN IN →'}</button>
+              <button type="button" onClick={() => { setForgotMode(true); setForgotEmail(signInForm.email); setSignInError(null); }}
+                      style={{ display: 'block', margin: '14px auto 0', background: 'none', border: 'none', color: 'rgba(218,218,218,0.55)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 12, padding: 0, textDecoration: 'underline' }}>
+                Forgot password?
+              </button>
+            </form>
+          )}
 
           {/* Sign up — invite-only */}
           <form onSubmit={handleSignUp} style={{ background: 'rgba(228,0,43,0.08)', border: '1px solid rgba(228,0,43,0.5)', borderRadius: 8, padding: '32px 32px 28px', position: 'relative' }}>
