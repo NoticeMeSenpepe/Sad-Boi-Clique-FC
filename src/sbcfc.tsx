@@ -895,12 +895,18 @@ const PlayerProfileModal = ({ player, onClose }) => {
             <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 28, color: player.accentColor }}>{player.apps}</div>
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase' }}>Apps</div>
           </div>
-          {player.goals && player.apps &&
+          {/* Goals-per-game cell. Always rendered so the row stays consistent
+              shape across players. Shows "—" when the ratio isn't computable
+              (apps = 0, e.g. a player who has never appeared yet) — earlier
+              the truthy check `player.goals && player.apps` returned the
+              literal 0 for Old Reliable, which JSX rendered as a bare "0"
+              outside any styled cell. */}
           <div style={{ flex: 1, padding: '14px 0', textAlign: 'center' }}>
-              <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 28, color: player.accentColor }}>{(player.goals / player.apps).toFixed(2)}</div>
-              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase' }}>G/Game</div>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 28, color: player.accentColor }}>
+              {player.apps > 0 ? (Number(player.goals || 0) / player.apps).toFixed(2) : '—'}
             </div>
-          }
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase' }}>G/Game</div>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -1175,6 +1181,44 @@ const StoreCarousel = ({ loop, setPage }) => {
   );
 };
 
+/** Two-line clamped paragraph; if the source string overflows, an
+ *  italic "…continue reading" prompt appears below to signal the panel
+ *  is clickable and there's more to read. Used by the homepage rotating
+ *  hero card. Truncation is detected by measuring scrollHeight against
+ *  clientHeight after layout, so it works across font / viewport
+ *  changes (e.g. on resize). */
+const TruncatedSubtext = ({ text }) => {
+  const ref = React.useRef(null);
+  const [truncated, setTruncated] = React.useState(false);
+  React.useLayoutEffect(() => {
+    setTruncated(false);
+    if (!ref.current) return;
+    // Allow the new text to settle into the DOM, then compare. scrollHeight
+    // exceeds clientHeight whenever the line-clamp had to chop something.
+    const id = window.requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      setTruncated(el.scrollHeight > el.clientHeight + 1);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [text]);
+  return (
+    <div>
+      <div ref={ref} style={{
+        fontFamily: 'Roboto, sans-serif', fontSize: 14, fontWeight: 300, color: 'rgba(218,218,218,0.75)', maxWidth: 520, lineHeight: 1.55,
+        display: '-webkit-box', WebkitLineClamp: 2 as any, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
+      }}>{text}</div>
+      {truncated && (
+        <div style={{
+          marginTop: 6,
+          fontFamily: 'Roboto, sans-serif', fontSize: 12, fontStyle: 'italic',
+          color: 'var(--accent)', letterSpacing: '0.04em',
+        }}>…continue reading →</div>
+      )}
+    </div>
+  );
+};
+
 // ── HOME PAGE ───────────────────────────────────────────────────
 const HomePage = ({ setPage, setSelectedPlayer }) => {
   const [headlineIdx, setHeadlineIdx] = React.useState(0);
@@ -1331,10 +1375,11 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
                 fontFamily: 'Anton, sans-serif', fontSize: 'clamp(28px, 4.2vw, 54px)', lineHeight: 0.95, color: '#fff', maxWidth: 820, textTransform: 'uppercase',
                 display: '-webkit-box', WebkitLineClamp: 2 as any, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
               }}>{h.text}</div>
-              <div style={{
-                fontFamily: 'Roboto, sans-serif', fontSize: 14, fontWeight: 300, color: 'rgba(218,218,218,0.75)', maxWidth: 520, lineHeight: 1.55,
-                display: '-webkit-box', WebkitLineClamp: 2 as any, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
-              }}>{h.sub}</div>
+              <TruncatedSubtext text={h.sub} />
+              {/* "...continue reading" hint sits OUTSIDE the clamped div so
+                  it remains visible. Only renders when the subtext was
+                  measured as truncated; the helper component swallows the
+                  detection internally and exposes nothing else. */}
               {h.image && (
                 <div
                   className="sbc-hero-news-image sbc-glow-panel"
@@ -2211,6 +2256,11 @@ const StatsPage = ({ setSelectedPlayer }) => {
             {sorted.map((r, i) => {
               const p = r.player;
               const accent = p.accentColor;
+              // Subtle zebra striping for readability — odd rows get a light
+              // tint, even rows stay transparent. The hover handlers still
+              // override with the player's accent tint on enter and restore
+              // the row's resting band on leave.
+              const restingBg = i % 2 === 1 ? 'rgba(255,255,255,0.025)' : 'transparent';
               return (
                 <div
                   key={p.id}
@@ -2219,10 +2269,11 @@ const StatsPage = ({ setSelectedPlayer }) => {
                     display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center',
                     padding: '10px 20px',
                     borderBottom: i < sorted.length - 1 ? '1px solid rgba(30,60,120,0.15)' : 'none',
+                    background: restingBg,
                     cursor: 'pointer', transition: 'background 0.15s',
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = `${accent}0d`; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = restingBg; }}
                 >
                   {/* Player cell — avatar + name + (live/AI) badge */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -3010,19 +3061,39 @@ const LeaguePage = () => {
 const StoreCard = ({ item }) => {
   const [hov, setHov] = React.useState(false);
   const [imgIdx, setImgIdx] = React.useState(0);
+  // Once the user clicks an arrow or swipes, stop the auto-cycle for the
+  // remainder of this hover session — otherwise the image they picked
+  // would jump back to the cycle a second later.
+  const [manualNav, setManualNav] = React.useState(false);
+  const touchStartX = React.useRef(null);
   const imgs = item.images || [];
   React.useEffect(() => {
-    if (!hov || imgs.length < 2) return;
+    if (!hov || imgs.length < 2 || manualNav) return;
     const iv = setInterval(() => setImgIdx((i) => (i + 1) % imgs.length), 1100);
     return () => clearInterval(iv);
-  }, [hov, imgs.length]);
-  React.useEffect(() => { if (!hov) setImgIdx(0); }, [hov]);
+  }, [hov, imgs.length, manualNav]);
+  React.useEffect(() => { if (!hov) { setImgIdx(0); setManualNav(false); } }, [hov]);
+
+  const goNext = (e) => { if (e) e.stopPropagation(); setManualNav(true); setImgIdx((i) => (i + 1) % imgs.length); };
+  const goPrev = (e) => { if (e) e.stopPropagation(); setManualNav(true); setImgIdx((i) => (i - 1 + imgs.length) % imgs.length); };
+  const onTouchStart = (e) => { touchStartX.current = e.touches[0]?.clientX ?? null; };
+  const onTouchEnd = (e) => {
+    if (touchStartX.current == null || imgs.length < 2) return;
+    const dx = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(dx) < 40) return;            // ignore taps / micro-drags
+    if (dx < 0) goNext(); else goPrev();
+  };
   return (
     <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       className="sbc-glow-panel sbc-store-card-enter"
       data-store-product={item.id}
       style={{ '--panel-color': item.clr === 'var(--accent)' ? 'var(--accent)' : item.clr, background: 'rgba(8,15,30,0.7)', border: `1px solid ${hov ? item.clr : 'rgba(255,255,255,0.08)'}`, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', transition: 'all 0.25s', transform: hov ? 'translateY(-6px)' : 'none', boxShadow: hov ? `0 20px 50px ${item.clr === 'var(--accent)' ? 'rgba(228,0,43,0.3)' : item.clr + '33'}` : 'none' }}>
-      <div style={{ height: 280, background: `linear-gradient(160deg, ${item.clr === 'var(--accent)' ? 'rgba(228,0,43,0.10)' : item.clr + '14'} 0%, rgba(3,8,16,0.95) 100%)`, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}>
+      <div
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        style={{ height: 280, background: `linear-gradient(160deg, ${item.clr === 'var(--accent)' ? 'rgba(228,0,43,0.10)' : item.clr + '14'} 0%, rgba(3,8,16,0.95) 100%)`, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}>
+
         {imgs.length > 0 ? (
           <React.Fragment>
             {imgs.map((src, i) => (
@@ -3047,10 +3118,56 @@ const StoreCard = ({ item }) => {
         {item.soldOut && <div className="sbc-soldout-banner">SOLD OUT</div>}
         {item.tag && <div style={{ position: 'absolute', top: 12, left: 12, fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, color: '#fff', background: item.clr, padding: '4px 10px', borderRadius: 2, letterSpacing: '0.18em', textTransform: 'uppercase', zIndex: 2 }}>{item.tag}</div>}
         <div style={{ position: 'absolute', bottom: 12, right: 12, fontFamily: 'Roboto, sans-serif', fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.18em', textTransform: 'uppercase', background: 'rgba(3,8,16,0.55)', padding: '3px 7px', borderRadius: 2, backdropFilter: 'blur(4px)', zIndex: 2 }}>{item.cat}</div>
+        {/* Side arrows for manual navigation. Visible on items with more
+            than one image at any viewport (touch friendly + click friendly).
+            The pill below them shows the current index. */}
         {imgs.length > 1 && (
-          <div style={{ position: 'absolute', bottom: 10, left: 12, display: 'flex', gap: 4, zIndex: 2 }}>
+          <React.Fragment>
+            <button
+              onClick={goPrev}
+              aria-label="Previous image"
+              style={{
+                position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', zIndex: 3,
+                width: 32, height: 32, borderRadius: '50%',
+                background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.18)',
+                color: '#fff', cursor: 'pointer',
+                fontFamily: 'Anton, sans-serif', fontSize: 16, lineHeight: 1, padding: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backdropFilter: 'blur(6px)', transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = item.clr; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(8,15,30,0.7)'; }}
+            >‹</button>
+            <button
+              onClick={goNext}
+              aria-label="Next image"
+              style={{
+                position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', zIndex: 3,
+                width: 32, height: 32, borderRadius: '50%',
+                background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.18)',
+                color: '#fff', cursor: 'pointer',
+                fontFamily: 'Anton, sans-serif', fontSize: 16, lineHeight: 1, padding: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backdropFilter: 'blur(6px)', transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = item.clr; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(8,15,30,0.7)'; }}
+            >›</button>
+          </React.Fragment>
+        )}
+        {/* Image-index pills. Wrapped in a dark blurred chip so the inactive
+            dots aren't lost on white product photos (was rgba(255,255,255,0.25)
+            which vanished against the kit shots). */}
+        {imgs.length > 1 && (
+          <div style={{
+            position: 'absolute', bottom: 10, left: 12, zIndex: 2,
+            display: 'flex', gap: 4, alignItems: 'center',
+            background: 'rgba(8,15,30,0.6)', backdropFilter: 'blur(6px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            padding: '5px 7px', borderRadius: 999,
+          }}>
             {imgs.map((_, i) => (
-              <div key={i} style={{ width: i === imgIdx ? 14 : 5, height: 4, borderRadius: 2, background: i === imgIdx ? item.clr : 'rgba(255,255,255,0.25)', transition: 'all 0.3s' }} />
+              <div key={i} style={{ width: i === imgIdx ? 14 : 5, height: 4, borderRadius: 2, background: i === imgIdx ? item.clr : 'rgba(255,255,255,0.55)', transition: 'all 0.3s' }} />
             ))}
           </div>
         )}
