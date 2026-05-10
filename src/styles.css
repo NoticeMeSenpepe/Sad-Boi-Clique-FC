@@ -79,7 +79,10 @@ a, button, [role="button"] { cursor: none; }
 
 /* ── Responsive: tablet & mobile ───────────────── */
 @media (max-width: 1100px) {
-  .sbc-nav-sponsor { display: none !important; }
+  /* Sponsor stays visible but shrinks so it doesn't crowd the nav links. */
+  .sbc-nav-sponsor    { font-size: 9px !important; }
+  .sbc-sponsor-name   { font-size: 10px !important; }
+  .sbc-sponsor-tag    { display: none !important; }
   .sbc-nav-links button { font-size: 11px !important; padding: 8px 8px !important; }
 }
 @media (max-width: 820px) {
@@ -89,6 +92,10 @@ a, button, [role="button"] { cursor: none; }
 
   .sbc-nav-links { display: none !important; }
   .sbc-burger { display: flex !important; }
+  /* Tighter sponsor in mobile bar (sat between logo and burger). */
+  .sbc-nav-sponsor    { font-size: 8px !important; line-height: 1.15 !important; max-width: 110px; }
+  .sbc-sponsor-label  { display: none !important; }
+  .sbc-sponsor-name   { font-size: 9px !important; }
 
   /* Stack hero + reduce padding */
   .sbc-hero-row { flex-direction: column !important; height: auto !important; padding: 24px 0 !important; gap: 28px !important; }

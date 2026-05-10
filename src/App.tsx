@@ -338,29 +338,13 @@ const App: React.FC = () => {
         )}
       </div>
 
-      {/* Fixed header: Chaos Feed + Nav (with EXIT link to return to landing) */}
+      {/* Fixed header: Chaos Feed + Nav. The EXIT link to return to landing
+          is now rendered inside NavBar as a regular nav item (after BASKET)
+          so it can't overlap the menu at any viewport. */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
         <ChaosTicker accentColor={acc} />
         <div style={{ position: 'relative' }}>
-          <NavBar page={page} setPage={navigateTo} accentColor={acc} />
-          <button
-            type="button"
-            onClick={() => setMode('landing')}
-            title="Return to landing page"
-            style={{
-              position: 'absolute', right: 168, top: '50%', transform: 'translateY(-50%)',
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: 'none', border: 'none', cursor: 'none',
-              fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: 12,
-              letterSpacing: '0.15em', textTransform: 'uppercase',
-              color: 'rgba(220,230,255,0.55)', transition: 'color 0.2s', zIndex: 2,
-              padding: '8px 12px',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = acc; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(220,230,255,0.55)'; }}
-          >
-            <span style={{ fontSize: 14 }}>←</span><span>EXIT</span>
-          </button>
+          <NavBar page={page} setPage={navigateTo} accentColor={acc} onExit={() => setMode('landing')} />
         </div>
       </div>
 

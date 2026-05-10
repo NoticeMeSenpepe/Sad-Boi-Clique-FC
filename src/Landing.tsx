@@ -252,6 +252,15 @@ const LANDING_STYLES = `
   opacity: 0; transition: opacity 2s ease, transform 0.2s ease-out;
   filter: saturate(0.7);
 }
+/* On portrait / mobile-sized viewports the widescreen splash crops badly,
+   so swap to the dedicated mobile splash. Threshold matches the rest of
+   the site's mobile breakpoint (820px). */
+@media (max-width: 820px) {
+  .sbc-landing-bg-image {
+    background-image: url('/uploads/Sad Boi Clique Mobile Splash.png');
+    background-size: cover;
+  }
+}
 .sbc-landing-bg-image.visible { opacity: 1; }
 
 .sbc-landing-bg-overlay {

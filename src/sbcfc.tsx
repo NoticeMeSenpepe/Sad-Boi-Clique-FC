@@ -521,7 +521,12 @@ const LEAGUE_TABLE = [
 
 
 // ── NavBar ─────────────────────────────────────────────────────
-const NavBar = ({ page, setPage }) => {
+// `onExit` (optional) is wired up by App.tsx and returns to the landing
+// splash. We render it as a regular nav item (after BASKET) so it can't
+// overlap the menu at any viewport — earlier it was a separate floating
+// button positioned absolutely over the nav, which collided with menu
+// items at certain widths.
+const NavBar = ({ page, setPage, onExit }) => {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const auth = useAuth();
   // Admin link is appended only when the signed-in user has is_admin = true.
@@ -541,9 +546,14 @@ const NavBar = ({ page, setPage }) => {
     ...(auth.profile?.is_admin ? [{ id: 'admin', label: 'ADMIN' }] : []),
     { id: 'account', label: '' },
     { id: 'basket',  label: 'BASKET' },
+    ...(onExit ? [{ id: 'exit', label: 'EXIT' }] : []),
   ];
 
-  const handleNav = (id) => {setPage(id);setMobileOpen(false);};
+  const handleNav = (id) => {
+    if (id === 'exit') { setMobileOpen(false); onExit?.(); return; }
+    setPage(id);
+    setMobileOpen(false);
+  };
   return (
     <nav className="sbc-nav" style={{
       position: 'relative',
@@ -587,6 +597,8 @@ const NavBar = ({ page, setPage }) => {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18l-2 12H5L3 6z"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
                 <span style={{ fontFamily: 'Roboto, sans-serif', fontWeight: 700, fontSize: 11 }}>£0.00</span>
               </span>
+            ) : item.id === 'exit' ? (
+              <><span style={{ fontSize: 14 }}>←</span><span>EXIT</span></>
             ) : item.label}
           </button>
         )}
@@ -622,7 +634,7 @@ const NavBar = ({ page, setPage }) => {
           fontFamily: 'Anton, sans-serif', fontSize: 18, letterSpacing: '0.15em',
           color: page === item.id ? 'var(--accent)' : 'rgba(220,230,255,0.7)',
           padding: '14px 28px', textAlign: 'left', textTransform: 'uppercase', cursor: 'pointer'
-        }}>{item.id === 'account' ? '—  ACCOUNT' : item.id === 'basket' ? '—  BASKET (£0.00)' : item.label}</button>
+        }}>{item.id === 'account' ? '—  ACCOUNT' : item.id === 'basket' ? '—  BASKET (£0.00)' : item.id === 'exit' ? '←  EXIT' : item.label}</button>
         )}
         </div>
       }
@@ -1200,14 +1212,24 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
     text: (n.headline || '').toUpperCase(),
     sub: n.summary || '',
     tag: n.tag || 'NEWS',
-    color: n.tagColor || 'var(--accent)'
+    color: n.tagColor || 'var(--accent)',
+    image: n.image || null,
   }));
 
-
+  // Rotate every 4.5s. Depend on `headlines.length` so the interval resets
+  // if the news list grows/shrinks underneath us, and use Math.max so we
+  // never modulo by zero (which would NaN the index and crash the panel).
   React.useEffect(() => {
-    const iv = setInterval(() => setHeadlineIdx((i) => (i + 1) % headlines.length), 4500);
+    if (headlines.length <= 1) return;
+    const iv = setInterval(() => setHeadlineIdx((i) => (i + 1) % Math.max(1, headlines.length)), 4500);
     return () => clearInterval(iv);
-  }, []);
+  }, [headlines.length]);
+  // Clamp the index whenever the list shrinks, so we don't render undefined
+  // (this is the source of the occasional "no data" flicker on the home
+  // page — a stale index pointing past the end of a freshly-fetched list).
+  React.useEffect(() => {
+    if (headlines.length > 0 && headlineIdx >= headlines.length) setHeadlineIdx(0);
+  }, [headlines.length, headlineIdx]);
 
   // Pulse footer values: try live (Supabase, populated by the scraper).
   // Fall back to the prototype's mock numbers if live data isn't available.
@@ -1259,7 +1281,9 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
 
 
   const topScorers = [...players].filter((p) => p.goals > 0).sort((a, b) => b.goals - a.goals).slice(0, 5);
-  const h = headlines[headlineIdx];
+  // Defensive fallback so the panel never renders blank if `headlines` is
+  // momentarily empty (e.g. between mock fallback and the live fetch).
+  const h = headlines[headlineIdx] || { id: '', text: 'SAD BOI CLIQUE FC', sub: 'Loading the latest from the clique…', tag: 'NEWS', color: 'var(--accent)', image: null };
 
   return (
     <div style={{ minHeight: '100vh', paddingBottom: 124 }}>
@@ -1298,17 +1322,34 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
               >›</button>
             </div>
           </div>
-          {/* Fixed-height rotating headline container so layout below never shifts */}
-          <div onClick={() => { try { localStorage.setItem('sbc_focus_news', String(h.id)); } catch (e) {} setPage('news'); }} style={{ position: 'relative', height: 200, marginBottom: 14, cursor: 'pointer', overflow: 'hidden' }}>
-            <div key={headlineIdx} style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', animation: 'fadeInHeadline 0.5s ease' }}>
+          {/* Rotating headline + image container. Height is now driven by
+              the image (when present) instead of being fixed at 200px, so
+              the headline photo sits naturally beneath the text. */}
+          <div onClick={() => { try { localStorage.setItem('sbc_focus_news', String(h.id)); } catch (e) {} setPage('news'); }} style={{ position: 'relative', minHeight: 220, marginBottom: 14, cursor: 'pointer' }}>
+            <div key={headlineIdx} style={{ display: 'flex', flexDirection: 'column', gap: 12, animation: 'fadeInHeadline 0.5s ease' }}>
               <div className="sbc-glow-heading" style={{
                 fontFamily: 'Anton, sans-serif', fontSize: 'clamp(28px, 4.2vw, 54px)', lineHeight: 0.95, color: '#fff', maxWidth: 820, textTransform: 'uppercase',
                 display: '-webkit-box', WebkitLineClamp: 2 as any, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
               }}>{h.text}</div>
               <div style={{
-                fontFamily: 'Roboto, sans-serif', fontSize: 14, fontWeight: 300, color: 'rgba(218,218,218,0.75)', maxWidth: 520, marginTop: 12, lineHeight: 1.55,
+                fontFamily: 'Roboto, sans-serif', fontSize: 14, fontWeight: 300, color: 'rgba(218,218,218,0.75)', maxWidth: 520, lineHeight: 1.55,
                 display: '-webkit-box', WebkitLineClamp: 2 as any, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
               }}>{h.sub}</div>
+              {h.image && (
+                <div className="sbc-hero-news-image" style={{
+                  width: '100%', maxWidth: 560, aspectRatio: '16 / 9',
+                  borderRadius: 6, overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+                }}>
+                  <img
+                    src={h.image}
+                    alt={h.text}
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </div>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 12, marginBottom: 18 }}>

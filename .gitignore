@@ -5,6 +5,12 @@ node_modules/
 dist/
 dist-ssr/
 
+# tsc -b incremental build artefacts (created when projects use composite: true)
+*.tsbuildinfo
+# tsc -b emit from tsconfig.node.json (referenced project) — not needed at runtime
+vite.config.js
+vite.config.d.ts
+
 # Local env files (these may contain secrets — don't commit).
 .env
 .env.local
