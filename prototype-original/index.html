@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sad Boi Clique FC — Official Site</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400&family=Barlow+Condensed:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: #030810;
+  color: #eef2ff;
+  font-family: 'Roboto', sans-serif;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(228,0,43,0.2) transparent;
+  cursor: none;
+}
+body::-webkit-scrollbar { width: 6px; }
+body::-webkit-scrollbar-track { background: transparent; }
+body::-webkit-scrollbar-thumb { background: rgba(228,0,43,0.2); border-radius: 3px; }
+#root { min-height: 100vh; }
+
+/* ── Custom cursor ───────────────────────────── */
+#site-cursor {
+  position: fixed; top: 0; left: 0; z-index: 9999;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #E4002B; pointer-events: none;
+  transform: translate(-50%,-50%);
+  transition: width 0.2s, height 0.2s;
+  mix-blend-mode: difference;
+}
+#site-cursor-ring {
+  position: fixed; top: 0; left: 0; z-index: 9998;
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid rgba(228,0,43,0.45); pointer-events: none;
+  transform: translate(-50%,-50%);
+  transition: width 0.25s, height 0.25s, border-color 0.2s;
+}
+a, button, [role="button"] { cursor: none; }
+
+/* ── Animations ──────────────────────────────── */
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes pulse-ring {
+  0%,100% { box-shadow: 0 0 0 0 rgba(228,0,43,0.4); }
+  50%      { box-shadow: 0 0 0 10px rgba(228,0,43,0); }
+}
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInHeadline {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+}
+.page-enter { animation: slide-in 0.35s cubic-bezier(0.2,0,0,1) both; }
+
+/* ── Tweaks panel ────────────────────────────── */
+#tweaks-panel {
+  position: fixed; bottom: 24px; right: 24px; z-index: 3000;
+  background: rgba(4,10,22,0.98); border: 1px solid rgba(228,0,43,0.25);
+  border-radius: 10px; padding: 20px; width: 270px;
+  backdrop-filter: blur(24px);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+  display: none;
+}
+#tweaks-panel.open { display: block; animation: slide-in 0.2s ease both; }
+
+/* ── Responsive: tablet & mobile ───────────────── */
+@media (max-width: 1100px) {
+  .sbc-nav-sponsor { display: none !important; }
+  .sbc-nav-links button { font-size: 11px !important; padding: 8px 8px !important; }
+}
+@media (max-width: 820px) {
+  /* Hide cursor on touch — restore native */
+  html, body, a, button, [role="button"] { cursor: auto !important; }
+  #site-cursor, #site-cursor-ring { display: none !important; }
+
+  .sbc-nav-links { display: none !important; }
+  .sbc-burger { display: flex !important; }
+
+  /* Stack hero + reduce padding */
+  .sbc-hero-row { flex-direction: column !important; height: auto !important; padding: 24px 0 !important; gap: 28px !important; }
+  .sbc-hero-left, .sbc-hero-right { flex: 1 1 auto !important; max-width: 100% !important; padding: 0 24px !important; }
+  .sbc-hero-headline { font-size: clamp(28px, 9vw, 44px) !important; }
+  .sbc-hero-mini { min-width: 0 !important; flex: 1 1 calc(50% - 6px) !important; }
+
+  /* Page headers shrink */
+  .sbc-page-header { height: 180px !important; padding: 0 24px 20px !important; }
+  .sbc-page-header-title { font-size: 38px !important; }
+
+  /* Generic page padding */
+  .sbc-page-pad { padding-left: 20px !important; padding-right: 20px !important; }
+
+  /* Pulse strip wraps */
+  .sbc-pulse { grid-template-columns: repeat(2, 1fr) !important; padding: 0 !important; }
+  .sbc-pulse > div { padding: 16px 0 !important; }
+  .sbc-pulse > div:nth-child(2) { border-right: none !important; }
+  .sbc-pulse > div:nth-child(1), .sbc-pulse > div:nth-child(2) { border-bottom: 1px solid rgba(255,255,255,0.18) !important; }
+
+  /* News lead card stacks */
+  .sbc-news-lead { grid-template-columns: 1fr !important; }
+
+  /* Tweaks panel */
+  #tweaks-panel { width: calc(100vw - 32px) !important; right: 16px !important; bottom: 88px !important; }
+
+  /* Squad grid tighter */
+  .sbc-squad-grid { grid-template-columns: 1fr 1fr !important; gap: 12px !important; }
+}
+@media (max-width: 520px) {
+  .sbc-squad-grid { grid-template-columns: 1fr !important; }
+  .sbc-page-header-title { font-size: 32px !important; }
+}
+
+/* ── LIGHT THEME ── inverts dark panels/text using brand palette ─── */
+/* NOTE: browsers normalize inline styles — #fff → rgb(255, 255, 255), 
+   rgba(8,15,30,0.85) → rgba(8, 15, 30, 0.85). Selectors below match both raw + normalized forms. */
+
+html.theme-light body { color: #020616; }
+
+/* Body & nav: cream */
+html.theme-light .sbc-nav,
+html.theme-light .sbc-mobile-menu { background: #f4f1ea !important; border-bottom-color: rgba(228,0,43,0.2) !important; }
+html.theme-light .sbc-ticker-wrap { background: #f4f1ea !important; }
+html.theme-light .sbc-nav-links button { color: rgba(2,6,22,0.7) !important; }
+html.theme-light .sbc-nav-links button:hover { color: var(--accent) !important; }
+
+/* SOLID dark panel backgrounds → cream. Match the SPACED/RGB forms the browser actually outputs. */
+html.theme-light [style*="background: rgba(8, 15, 30"],
+html.theme-light [style*="background: rgba(3, 8, 16"],
+html.theme-light [style*="background: rgba(6, 12, 24"],
+html.theme-light [style*="background: rgba(10, 22, 40"],
+html.theme-light [style*="background: rgba(2, 10, 24"],
+html.theme-light [style*="background: rgba(0, 0, 0"],
+html.theme-light [style*="background: rgb(8, 15, 30)"],
+html.theme-light [style*="background: rgb(3, 8, 16)"],
+html.theme-light [style*="background: rgb(6, 12, 24)"],
+html.theme-light [style*="background: rgb(2, 10, 24)"],
+html.theme-light [style*="background: rgb(10, 22, 40)"] {
+  background: rgba(255,251,243,0.92) !important;
+  border-color: rgba(2,6,22,0.12) !important;
+}
+
+/* White text → navy. Don't kill text inside the (now-inverted) Pulse strip — handled separately. */
+html.theme-light :not(.sbc-pulse) > [style*="color: rgb(255, 255, 255)"],
+html.theme-light :not(.sbc-pulse) > [style*="color: #fff"] {
+  color: #020616 !important;
+}
+/* deeper descendants too */
+html.theme-light [style*="color: rgb(255, 255, 255)"]:not(.sbc-pulse *),
+html.theme-light [style*="color: #fff"]:not(.sbc-pulse *) {
+  color: #020616 !important;
+}
+
+/* Mid-grey body text → readable navy */
+html.theme-light [style*="color: rgba(218, 218, 218, 0.75)"],
+html.theme-light [style*="color: rgba(218, 218, 218, 0.7)"],
+html.theme-light [style*="color: rgba(218, 218, 218, 0.65)"],
+html.theme-light [style*="color: rgba(218, 218, 218, 0.6)"],
+html.theme-light [style*="color: rgba(218, 218, 218, 0.5)"],
+html.theme-light [style*="color: rgba(218, 218, 218, 0.45)"],
+html.theme-light [style*="color: rgba(218, 218, 218, 0.4)"],
+html.theme-light [style*="color: rgba(220, 230, 255, 0.7)"],
+html.theme-light [style*="color: rgba(220, 230, 255, 0.55)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.85)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.75)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.7)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.65)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.6)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.5)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.45)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.4)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.35)"] {
+  color: rgba(2,6,22,0.78) !important;
+}
+
+/* Lighter grey text → still legible at 55% navy */
+html.theme-light [style*="color: rgba(218, 218, 218, 0.35)"],
+html.theme-light [style*="color: rgba(218, 218, 218, 0.3)"],
+html.theme-light [style*="color: rgba(218, 218, 218, 0.25)"],
+html.theme-light [style*="color: rgba(218, 218, 218, 0.12)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.3)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.25)"],
+html.theme-light [style*="color: rgba(255, 255, 255, 0.2)"] {
+  color: rgba(2,6,22,0.55) !important;
+}
+
+/* OUTLINE BORDERS on muted whites → accent (red) so they read on cream */
+html.theme-light [style*="border: 1px solid rgba(255, 255, 255, 0.25)"],
+html.theme-light [style*="border: 1px solid rgba(255, 255, 255, 0.2)"],
+html.theme-light [style*="border: 1px solid rgba(255, 255, 255, 0.18)"],
+html.theme-light [style*="border: 1px solid rgba(255, 255, 255, 0.15)"],
+html.theme-light [style*="border: 1px solid rgba(255, 255, 255, 0.1)"],
+html.theme-light [style*="border: 1px solid rgba(255, 255, 255, 0.08)"],
+html.theme-light [style*="border-right: 1px solid rgba(255, 255, 255, 0.18)"] {
+  border-color: rgba(228,0,43,0.35) !important;
+}
+
+/* Outline buttons (white border + white text) → accent red */
+html.theme-light button[style*="border: 1px solid rgba(255, 255, 255, 0.25)"] { color: var(--accent) !important; }
+
+/* Filter bar even lighter on cream */
+html.theme-light .sbc-filter-bar { background: rgba(255,251,243,0.45) !important; border-bottom-color: rgba(228,0,43,0.15) !important; }
+
+/* PULSE STRIP — invert: white bg with red text */
+html.theme-light .sbc-pulse { background: rgba(255,251,243,0.95) !important; border-top: 1px solid rgba(228,0,43,0.2) !important; border-bottom: 1px solid rgba(228,0,43,0.2) !important; }
+html.theme-light .sbc-pulse * { color: var(--accent) !important; }
+
+/* Tweaks panel: theme-aware */
+html.theme-light #tweaks-panel { background: rgba(255,251,243,0.98) !important; border-color: rgba(228,0,43,0.25) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.15) !important; }
+html.theme-light #tweaks-panel * { color: rgba(2,6,22,0.85) !important; }
+html.theme-light #tweaks-panel button[style*="background: rgb(228, 0, 43)"], html.theme-light #tweaks-panel button[style*="background: var(--accent)"] { color: #fff !important; }
+html.theme-light #tweaks-panel span[style*="color: var(--accent)"], html.theme-light #tweaks-panel span[style*="color: rgb(228, 0, 43)"] { color: var(--accent) !important; }
+
+/* HERO overlays — soften dark gradients to cream so bg image shows through */
+html.theme-light .sbc-hero-overlay { background: linear-gradient(90deg, rgba(244,241,234,0.7) 0%, rgba(244,241,234,0.35) 50%, rgba(244,241,234,0.15) 100%) !important; }
+html.theme-light .sbc-hero-overlay-bottom { background: linear-gradient(0deg, rgba(244,241,234,0.85) 0%, transparent 50%) !important; }
+
+/* GLOBAL background-image overlay — much lighter in light mode (was the main "too bright" cause) */
+html.theme-light .sbc-bg-tint { background: linear-gradient(180deg, rgba(244,241,234,0.2) 0%, rgba(244,241,234,0.4) 60%, rgba(244,241,234,0.55) 100%) !important; }
+/* Light mode: sponsor text legible (mid-grey on cream is unreadable) */
+html.theme-light .sbc-sponsor-label { color: var(--accent) !important; }
+html.theme-light .sbc-sponsor-name  { color: rgba(2,6,22,0.85) !important; }
+html.theme-light .sbc-sponsor-tag   { color: rgba(2,6,22,0.55) !important; }
+
+/* ── Light mode: page header text always white (dark image bg) ── */
+html.theme-light .sbc-page-header [style*="color: rgb(255, 255, 255)"],
+html.theme-light .sbc-page-header [style*="color: #fff"],
+html.theme-light .sbc-page-header [style*="color: rgba(218, 218, 218"] {
+  color: #fff !important;
+}
+html.theme-light .sbc-page-header [style*="color: var(--accent)"],
+html.theme-light .sbc-page-header [style*="color: rgb(228, 0, 43)"] {
+  color: var(--accent) !important;
+}
+
+/* ── Light mode: player panels keep dark photos + white text ── */
+/* Force white-ish text inside player panels regardless of light theme */
+html.theme-light .sbc-player-panel [style*="color: rgb(255, 255, 255)"],
+html.theme-light .sbc-player-panel [style*="color: #fff"] {
+  color: #fff !important;
+}
+html.theme-light .sbc-player-panel [style*="color: rgba(218, 218, 218, 0.5)"],
+html.theme-light .sbc-player-panel [style*="color: rgba(218, 218, 218, 0.4)"],
+html.theme-light .sbc-player-panel [style*="color: rgba(218, 218, 218, 0.45)"],
+html.theme-light .sbc-player-panel [style*="color: rgba(218, 218, 218, 0.6)"],
+html.theme-light .sbc-player-panel [style*="color: rgba(218, 218, 218, 0.7)"] {
+  color: rgba(255,255,255,0.7) !important;
+}
+/* Soften the dark sheen overlay in light mode (lighter, still readable) */
+html.theme-light .sbc-player-panel .sbc-player-fade {
+  background: linear-gradient(0deg, rgba(3,8,16,0.75) 0%, rgba(3,8,16,0.25) 45%, transparent 100%) !important;
+}
+
+/* Player modal: keep name + readable text white in light mode (modal stays dark) */
+html.theme-light .sbc-player-modal { background: #080f1e !important; }
+html.theme-light .sbc-player-modal [style*="color: #fff"],
+html.theme-light .sbc-player-modal [style*="color: rgb(255, 255, 255)"],
+html.theme-light .sbc-player-modal [style*="color: rgba(218, 218, 218"] ,
+html.theme-light .sbc-player-modal [style*="color: rgba(255, 255, 255"] {
+  color: #fff !important;
+}
+html.theme-light .sbc-player-modal [style*="background: rgba(8, 15, 30"],
+html.theme-light .sbc-player-modal [style*="background: rgb(8, 15, 30)"],
+html.theme-light .sbc-player-modal [style*="background: rgba(10, 22, 40"],
+html.theme-light .sbc-player-modal [style*="background: rgba(3, 8, 16"] {
+  background: rgba(8,15,30,0.92) !important;
+}
+
+/* Store: pulse-focus when navigating from a homepage preview */
+@keyframes sbc-store-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--panel-color, var(--accent)) 80%, transparent); }
+  60%  { box-shadow: 0 0 0 18px color-mix(in srgb, var(--panel-color, var(--accent)) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--panel-color, var(--accent)) 0%, transparent); }
+}
+.sbc-store-focused {
+  animation: sbc-store-pulse 1.2s ease-out 2;
+  border-color: var(--panel-color, var(--accent)) !important;
+}
+
+/* (panel-color glow handled below in .sbc-glow-panel:hover) */
+
+/* ── Light mode: store card sub-captions darker so they're readable ── */
+html.theme-light .sbc-page-pad [style*="color: rgba(218, 218, 218, 0.55)"],
+html.theme-light .sbc-page-pad [style*="color: rgba(218, 218, 218, 0.5)"],
+html.theme-light .sbc-page-pad [style*="color: rgba(218, 218, 218, 0.6)"],
+html.theme-light .sbc-page-pad [style*="color: rgba(218, 218, 218, 0.65)"] {
+  color: rgba(2,6,22,0.92) !important;
+}
+
+/* ── Page wrappers transparent so the global imp bg shows through ── */
+[style*="background: rgb(3, 8, 16)"][style*="min-height: 100vh"],
+[style*="background: #030810"][style*="min-height: 100vh"] {
+  background: transparent !important;
+}
+/* Page header bands stay solid so they cleanly cap the bg image below */
+[style*="background: rgba(6, 12, 24, 0.95)"],
+[style*="background: rgba(6,12,24,0.95)"] {
+  background: #030810 !important;
+}
+/* Global bg position: home shows full image; subpages start image below the page-header */
+.sbc-globalbg { top: 0; }
+.sbc-globalbg.sbc-globalbg-subpage { top: 244px; }
+@media (max-width: 820px) {
+  .sbc-globalbg.sbc-globalbg-subpage { top: 240px; }
+}
+
+/* ── Brand glow: tied to --glow / --glow-strong (controlled by glowIntensity slider) ── */
+.sbc-glow-heading {
+  text-shadow: 0 2px 14px var(--glow), 0 0 32px var(--glow-strong);
+}
+.sbc-glow-panel {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease !important;
+}
+.sbc-glow-panel:hover {
+  transform: translateY(-3px);
+  border-color: var(--panel-color, var(--accent)) !important;
+  box-shadow:
+    0 14px 44px color-mix(in srgb, var(--panel-color, var(--accent)) calc(var(--glow-alpha, 1) * 100%), transparent),
+    0 0 1px var(--panel-color, var(--accent)) inset
+    !important;
+}
+/* Light mode: keep panel-color border instead of being globally re-coloured to accent */
+html.theme-light .sbc-glow-panel {
+  border-color: color-mix(in srgb, var(--panel-color, var(--accent)) 35%, transparent) !important;
+}
+html.theme-light .sbc-glow-panel:hover {
+  border-color: var(--panel-color, var(--accent)) !important;
+}
+html.theme-light .sbc-glow-heading {
+  text-shadow: 0 2px 12px var(--glow);
+}
+
+/* News mosaic: square tiles. Lead spans 2x2 to remain square. */
+.sbc-news-mosaic .sbc-news-tile { aspect-ratio: 1 / 1; }
+.sbc-news-mosaic .sbc-news-lead { aspect-ratio: 1 / 1; }
+
+/* Responsive: 5 cols → 4 → 3 → 2 → 1 */
+@media (max-width: 1400px) {
+  .sbc-news-mosaic { grid-template-columns: repeat(4, 1fr) !important; }
+}
+@media (max-width: 1100px) {
+  .sbc-news-mosaic { grid-template-columns: repeat(3, 1fr) !important; }
+}
+@media (max-width: 820px) {
+  .sbc-news-mosaic { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 540px) {
+  .sbc-news-mosaic { grid-template-columns: 1fr !important; }
+  .sbc-news-mosaic .sbc-news-lead { grid-column: span 1 !important; grid-row: span 1 !important; aspect-ratio: 1 / 1 !important; }
+  .sbc-news-mosaic .sbc-news-lead-headline { font-size: 26px !important; }
+}
+
+/* Store filter fade-in animation */
+@keyframes sbcStoreFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.sbc-store-card-enter { animation: sbcStoreFadeIn 0.35s cubic-bezier(0.2,0.8,0.2,1) both; }
+
+/* Homepage Sad Boi Store carousel */
+@keyframes sbcStoreScroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.sbc-store-carousel:hover .sbc-store-track { animation-play-state: paused; }
+
+/* SOLD OUT diagonal banner */
+.sbc-soldout-banner {
+  position: absolute; top: 26px; left: -42px; width: 180px;
+  background: linear-gradient(180deg, #e4002b 0%, #b80024 100%);
+  color: #fff; font-family: 'Anton', sans-serif; font-size: 14px;
+  letter-spacing: 0.28em; text-align: center; padding: 7px 0;
+  transform: rotate(-32deg); box-shadow: 0 6px 18px rgba(0,0,0,0.45), inset 0 -1px 0 rgba(0,0,0,0.25);
+  z-index: 4; pointer-events: none; text-transform: uppercase;
+  border-top: 1px solid rgba(255,255,255,0.25); border-bottom: 1px solid rgba(0,0,0,0.3);
+}
+.sbc-soldout-banner::before, .sbc-soldout-banner::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 8px; background: rgba(0,0,0,0.35);
+}
+.sbc-soldout-banner::before { left: 0; } .sbc-soldout-banner::after { right: 0; }
+
+/* ── LIGHT MODE FIXES ── (placed last so source order resolves ties with above rules) ─── */
+
+/* Page header titles (font-size: 64px) stay white in light mode */
+html.theme-light [style*="font-size: 64px"] {
+  color: #fff !important;
+}
+
+/* Page header sheens — lighten the dark gradient overlays */
+html.theme-light [style*="linear-gradient(180deg, rgba(3, 8, 16, 0.55)"],
+html.theme-light [style*="linear-gradient(180deg, rgba(3, 8, 16, 0.6)"],
+html.theme-light [style*="linear-gradient(180deg, rgba(3,8,16,0.55)"],
+html.theme-light [style*="linear-gradient(180deg, rgba(3,8,16,0.6)"] {
+  background: linear-gradient(180deg, rgba(3,8,16,0.1) 0%, rgba(3,8,16,0.4) 100%) !important;
+}
+html.theme-light [style*="linear-gradient(90deg, rgba(3, 8, 16, 0.85)"],
+html.theme-light [style*="linear-gradient(90deg, rgba(3,8,16,0.85)"] {
+  background: linear-gradient(90deg, rgba(3,8,16,0.45) 0%, transparent 50%) !important;
+}
+
+/* Squad player cards & news mosaic: keep dark backgrounds (don't invert to cream) so white text stays legible */
+html.theme-light .sbc-squad-grid [style*="background: rgba(8, 15, 30"],
+html.theme-light .sbc-squad-grid [style*="background: rgba(3, 8, 16"],
+html.theme-light .sbc-news-mosaic [style*="background: rgba(8, 15, 30"],
+html.theme-light .sbc-news-mosaic [style*="background: rgba(3, 8, 16"],
+html.theme-light .sbc-archive-tile,
+html.theme-light .sbc-archive-tile [style*="background: rgba(8, 15, 30"],
+html.theme-light .sbc-archive-tile [style*="background: rgba(3, 8, 16"] {
+  background: rgba(8,15,30,0.88) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+
+/* Keep white/grey text white inside squad cards, news mosaic & archive tiles (over dark/image bg) */
+html.theme-light .sbc-squad-grid [style*="color: rgb(255, 255, 255)"],
+html.theme-light .sbc-squad-grid [style*="color: #fff"],
+html.theme-light .sbc-news-mosaic [style*="color: rgb(255, 255, 255)"],
+html.theme-light .sbc-news-mosaic [style*="color: #fff"],
+html.theme-light .sbc-archive-tile [style*="color: rgb(255, 255, 255)"],
+html.theme-light .sbc-archive-tile [style*="color: #fff"] {
+  color: #fff !important;
+}
+html.theme-light .sbc-squad-grid [style*="color: rgba(218, 218, 218"],
+html.theme-light .sbc-squad-grid [style*="color: rgba(255, 255, 255"],
+html.theme-light .sbc-news-mosaic [style*="color: rgba(218, 218, 218"],
+html.theme-light .sbc-news-mosaic [style*="color: rgba(255, 255, 255"],
+html.theme-light .sbc-archive-tile [style*="color: rgba(218, 218, 218"],
+html.theme-light .sbc-archive-tile [style*="color: rgba(255, 255, 255"] {
+  color: rgba(255,255,255,0.78) !important;
+}
+
+/* Home page non-active dot indicators: visible on cream */
+html.theme-light .sbc-pagedot-inactive {
+  background: rgba(2,6,22,0.45) !important;
+}
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div id="site-cursor"></div>
+<div id="site-cursor-ring"></div>
+
+<div id="root"></div>
+
+<!-- All components + pages -->
+<script type="text/babel" src="sbcfc-all.jsx"></script>
+
+<script type="text/babel">
+const {
+  NavBar, BreakingTicker, RainbowBar,
+  HomePage, SquadPage, StatsPage, FixturesPage,
+  NewsPage, TransfersPage, LeaguePage, StorePage, AccountPage, BasketPage,
+  PlayerProfileModal, PLAYERS
+} = window;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accentColor": "#E4002B",
+  "glowIntensity": 100,
+  "theme": "dark"
+}/*EDITMODE-END*/;
+
+const BG_IMAGES = [
+  'uploads/pasted-1777416492636-0.png',
+  'uploads/pasted-1777416483790-0.png',
+  'uploads/Sad Boi Clique Widescreen.png',
+  'uploads/sad boi header.png'
+];
+const BG_IMAGES_LIGHT = [
+  'uploads/white imp background 1.png',
+  'uploads/white imp background 2.png',
+  'uploads/Sad Boi Clique Widescreen.png',
+  'uploads/sad boi header.png'
+];
+
+const THEME_COLORS = {
+  dark:  '#030810',
+  light: '#f4f1ea'
+};
+
+// ── Cursor setup (vanilla JS, runs outside React) ──
+(function() {
+  const cur = document.getElementById('site-cursor');
+  const ring = document.getElementById('site-cursor-ring');
+  let rx = window.innerWidth/2, ry = window.innerHeight/2;
+
+  document.addEventListener('mousemove', e => {
+    cur.style.left = e.clientX + 'px';
+    cur.style.top  = e.clientY + 'px';
+  });
+
+  function animRing() {
+    const tx = parseFloat(cur.style.left) || 0;
+    const ty = parseFloat(cur.style.top)  || 0;
+    rx += (tx - rx) * 0.13;
+    ry += (ty - ry) * 0.13;
+    ring.style.left = rx + 'px';
+    ring.style.top  = ry + 'px';
+    requestAnimationFrame(animRing);
+  }
+  animRing();
+
+  document.addEventListener('mousedown', () => {
+    cur.style.transform = 'translate(-50%,-50%) scale(1.8)';
+    ring.style.width = '18px'; ring.style.height = '18px';
+  });
+  document.addEventListener('mouseup', () => {
+    cur.style.transform = 'translate(-50%,-50%) scale(1)';
+    ring.style.width = '36px'; ring.style.height = '36px';
+  });
+
+  // Enlarge on interactive elements
+  document.addEventListener('mouseover', e => {
+    if (e.target.closest('a,button,[role="button"]')) {
+      ring.style.width = '56px'; ring.style.height = '56px';
+      ring.style.borderColor = 'rgba(228,0,43,0.8)';
+    }
+  });
+  document.addEventListener('mouseout', e => {
+    if (e.target.closest('a,button,[role="button"]')) {
+      ring.style.width = '36px'; ring.style.height = '36px';
+      ring.style.borderColor = 'rgba(228,0,43,0.45)';
+    }
+  });
+})();
+
+// ── Chaos Feed ticker items ──
+const CHAOS_ITEMS = [
+  { player: 'PANIKOVA', msg: 'Arrived at training wearing sunglasses. Indoors. At night.', color: '#E4002B' },
+  { player: 'GYMSKIN', msg: 'Coffee refused. Thermometer reading: 94.8°. Session delayed 11 minutes.', color: '#9b5de5' },
+  { player: 'RICCIARDO', msg: 'Attempted a cross. The ball went backwards. Investigation ongoing.', color: '#00c8ff' },
+  { player: 'RFK JR', msg: 'Brought unidentified smoothie to training. Team physio taking notes.', color: '#e9c46a' },
+  { player: 'RUBIO', msg: 'Fourth water break requested. Performance imminent.', color: '#f4a261' },
+  { player: 'DONNY P', msg: '"That shot was on target actually." GPS confirms it was not.', color: '#e9c46a' },
+  { player: 'KARAVAVOV', msg: 'Attempted no-look pass. Lost possession. Declared it intentional.', color: '#f4a261' },
+  { player: 'DIAKITE', msg: 'Spotted in a car park near the stadium. DO NOT APPROACH.', color: '#E4002B' },
+  { player: 'HEGSETH', msg: 'Providing live commentary on his own performance. 89th minute. Again.', color: '#e63946' },
+  { player: 'NOEM', msg: 'Yellow card. No apology issued. Club statement: "We support this."', color: '#9b5de5' },
+  { player: 'PANIKOVA', msg: 'Claims he saw signs in a fern again. Tactical formation. We checked. It was a fern.', color: '#E4002B' },
+  { player: 'GYMSKIN', msg: 'Aura Pulse activated. Coffee at exactly 95°. Team immediately 34% better.', color: '#9b5de5' },
+];
+
+// ── Enhanced Chaos Feed Ticker ──
+const ChaosTicker = ({ accentColor }) => {
+  const doubled = [...CHAOS_ITEMS, ...CHAOS_ITEMS];
+  return (
+    <div className="sbc-ticker-wrap" style={{
+      background: '#030810', borderBottom: `1px solid ${accentColor}33`,
+      display: 'flex', alignItems: 'stretch', overflow: 'hidden', height: 36
+    }}>
+      {/* Label */}
+      <div style={{
+        background: accentColor, display: 'flex', alignItems: 'center',
+        padding: '0 16px', flexShrink: 0, gap: 6, zIndex: 1
+      }}>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff', animation: 'pulse-ring 1.5s infinite' }} />
+        <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 11, color: '#fff', letterSpacing: '0.18em', whiteSpace: 'nowrap' }}>CHAOS FEED</span>
+      </div>
+      {/* Scrolling content */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
+        <div style={{ display: 'inline-flex', animation: 'ticker 55s linear infinite', whiteSpace: 'nowrap' }}>
+          {doubled.map((item, i) => (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 28px 0 0' }}>
+              <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 11, color: item.color, letterSpacing: '0.1em' }}>{item.player}</span>
+              <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: accentColor, fontWeight: 700, letterSpacing: '0.04em' }}>{item.msg}</span>
+              <span style={{ color: `${accentColor}44`, fontSize: 8, marginLeft: 8 }}>◆</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Main App ──
+const App = () => {
+  const [page, setPage]                     = React.useState('home');
+  const [selectedPlayer, setSelectedPlayer] = React.useState(null);
+  const [tweaksOpen, setTweaksOpen]         = React.useState(false);
+  const [tweaks, setTweaks]                 = React.useState(TWEAK_DEFAULTS);
+  const [bgIdx, setBgIdx]                   = React.useState(0);
+  const [bgManual, setBgManual]             = React.useState(false);
+  const [pageKey, setPageKey] = React.useState(0);
+
+  // Rotate bg every 14s — only if user hasn't manually picked one
+  // Background rotation disabled — image only changes when user picks one in Tweaks
+
+  // Apply CSS variables + body bg whenever tweaks change
+  React.useEffect(() => {
+    const r = document.documentElement;
+    r.style.setProperty('--accent', tweaks.accentColor);
+    // Glow color uses accentColor with alpha based on glowIntensity (0..100)
+    const a = Math.max(0, Math.min(100, tweaks.glowIntensity)) / 100;
+    const hex = tweaks.accentColor.replace('#','');
+    const rr = parseInt(hex.substring(0,2),16);
+    const gg = parseInt(hex.substring(2,4),16);
+    const bb = parseInt(hex.substring(4,6),16);
+    r.style.setProperty('--glow', `rgba(${rr},${gg},${bb},${(a*0.6).toFixed(2)})`);
+    r.style.setProperty('--glow-strong', `rgba(${rr},${gg},${bb},${a.toFixed(2)})`);
+    r.style.setProperty('--glow-alpha', a.toFixed(2));
+    const bg = THEME_COLORS[tweaks.theme] || THEME_COLORS.dark;
+    r.style.setProperty('--bg', bg);
+    document.body.style.background = bg;
+    // Toggle light theme class on <html> so CSS overrides take effect
+    if (tweaks.theme === 'light') {
+      r.classList.add('theme-light');
+    } else {
+      r.classList.remove('theme-light');
+    }
+    // Update cursor color
+    const cur = document.getElementById('site-cursor');
+    if (cur) cur.style.background = tweaks.accentColor;
+  }, [tweaks]);
+
+  // Tweaks host protocol
+  React.useEffect(() => {
+    const fn = e => {
+      if (e.data?.type === '__activate_edit_mode')   setTweaksOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', fn);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', fn);
+  }, []);
+
+  const setTweak = (k, v) => {
+    const next = typeof k === 'object' ? { ...tweaks, ...k } : { ...tweaks, [k]: v };
+    setTweaks(next);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: next }, '*');
+  };
+
+  const navigateTo = p => {
+    setPageKey(k => k + 1);
+    setPage(p);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const acc = tweaks.accentColor;
+  const bgColor = THEME_COLORS[tweaks.theme] || THEME_COLORS.dark;
+  const activeBgList = tweaks.theme === 'light' ? BG_IMAGES_LIGHT : BG_IMAGES;
+
+  const pageComponents = {
+    home:      <HomePage setPage={navigateTo} setSelectedPlayer={setSelectedPlayer} tweaks={tweaks} />,
+    squad:     <SquadPage setSelectedPlayer={setSelectedPlayer} tweaks={tweaks} />,
+    stats:     <StatsPage setSelectedPlayer={setSelectedPlayer} tweaks={tweaks} />,
+    fixtures:  <FixturesPage tweaks={tweaks} />,
+    news:      <NewsPage tweaks={tweaks} />,
+    transfers: <TransfersPage tweaks={tweaks} />,
+    league:    <LeaguePage tweaks={tweaks} />,
+    store:     <StorePage tweaks={tweaks} />,
+    basket:    <BasketPage setPage={navigateTo} tweaks={tweaks} />,
+    account:   <AccountPage setPage={navigateTo} tweaks={tweaks} />,
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: bgColor, position: 'relative' }}>
+
+      {/* ── Global background: imp screensaver (no fleur overlay, more vibrant) ── */}
+      <div className={`sbc-globalbg ${page === 'home' ? '' : 'sbc-globalbg-subpage'}`} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 0, pointerEvents: 'none' }}>
+        {activeBgList.map((img, i) => (
+          <div key={img} style={{
+            position: 'absolute', inset: 0,
+            backgroundImage: `url("${img}")`,
+            backgroundSize: 'cover', backgroundPosition: 'center center', backgroundRepeat: 'no-repeat',
+            opacity: i === bgIdx ? 0.55 : 0,
+            transition: 'opacity 2.5s ease'
+          }} />
+        ))}
+        <div className="sbc-bg-tint" style={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, ${bgColor}55 0%, ${bgColor}77 60%, ${bgColor}99 100%)` }} />
+        {page === 'home' && (
+          <div className="sbc-home-sheen" style={{ position: 'absolute', inset: 0, background: tweaks.theme === 'light'
+            ? 'linear-gradient(90deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0.2) 100%)'
+            : 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, rgba(3,8,16,0.55) 50%, rgba(3,8,16,0.25) 100%)' }} />
+        )}
+      </div>
+
+      {/* ── Fixed header: Chaos Feed + Nav ── */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
+        <ChaosTicker accentColor={acc} />
+        <div style={{ position: 'relative' }}>
+          <NavBar page={page} setPage={navigateTo} accentColor={acc} />
+          <a href="landing.html" style={{
+            position: 'absolute', right: 168, top: '50%', transform: 'translateY(-50%)',
+            display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none',
+            fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: 12,
+            letterSpacing: '0.15em', textTransform: 'uppercase',
+            color: 'rgba(220,230,255,0.55)', transition: 'color 0.2s', zIndex: 2,
+            padding: '8px 12px'
+          }}
+            onMouseEnter={e => e.currentTarget.style.color = acc}
+            onMouseLeave={e => e.currentTarget.style.color = 'rgba(220,230,255,0.55)'}
+          >
+            <span style={{ fontSize: 14 }}>←</span><span>EXIT</span>
+          </a>
+        </div>
+      </div>
+
+      {/* ── Page content ── */}
+      <div key={pageKey} className="page-enter" style={{ position: 'relative', zIndex: 1, paddingBottom: 0 }}>
+        {pageComponents[page] || pageComponents.home}
+      </div>
+
+      {/* (Homepage rainbow + pulse footer live INSIDE HomePage in sbcfc-all.jsx) */}
+
+      {/* ── Profile modal ── */}
+      {selectedPlayer && (
+        <PlayerProfileModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
+      )}
+
+      {/* ── In-page Tweaks toggle button ── */}
+      {!tweaksOpen && (
+        <button onClick={() => setTweaksOpen(true)} style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 2999,
+          background: 'rgba(4,10,22,0.95)', border: `1px solid ${acc}66`,
+          borderRadius: '50%', width: 52, height: 52,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(12px)',
+          boxShadow: `0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px ${acc}22`,
+          transition: 'all 0.2s'
+        }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = acc; e.currentTarget.style.boxShadow = `0 8px 32px ${acc}88`; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = `${acc}66`; e.currentTarget.style.boxShadow = `0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px ${acc}22`; }}
+          title="Customise theme">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={acc} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      )}
+
+      {/* ── Tweaks panel ── */}
+      <div id="tweaks-panel" className={tweaksOpen ? 'open' : ''}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: acc, letterSpacing: '0.15em' }}>TWEAKS</span>
+          <button onClick={() => { setTweaksOpen(false); window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*'); }}
+            style={{ background: 'none', border: 'none', color: 'rgba(218,218,218,0.4)', fontSize: 16, lineHeight: 1 }}>✕</button>
+        </div>
+
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.4)', marginBottom: 8, textTransform: 'uppercase' }}>Accent Colour</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {['#E4002B','#9b5de5','#00c8ff','#2a9d8f','#e9c46a','#f4a261'].map(c => (
+            <div key={c} onClick={() => setTweak('accentColor', c)} style={{
+              width: 28, height: 28, borderRadius: '50%', background: c, flexShrink: 0,
+              border: acc === c ? '3px solid #fff' : '3px solid transparent',
+              boxShadow: acc === c ? `0 0 12px ${c}` : 'none',
+              transition: 'all 0.15s', cursor: 'none'
+            }} />
+          ))}
+        </div>
+
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.4)', margin: '14px 0 8px', textTransform: 'uppercase' }}>Glow Intensity</div>
+        <input type="range" min="0" max="100" value={tweaks.glowIntensity}
+          onChange={e => setTweak('glowIntensity', +e.target.value)}
+          style={{ width: '100%', accentColor: acc }} />
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, color: acc, textAlign: 'right', marginTop: 2 }}>{tweaks.glowIntensity}%</div>
+
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.4)', margin: '14px 0 8px', textTransform: 'uppercase' }}>Theme</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[['dark','DARK'],['light','LIGHT']].map(([val, lbl]) => (
+            <button key={val} onClick={() => setTweak('theme', val)} style={{
+              flex: 1, padding: '7px 0',
+              background: tweaks.theme === val ? acc : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${tweaks.theme === val ? acc : 'rgba(255,255,255,0.1)'}`,
+              color: tweaks.theme === val ? '#fff' : 'rgba(218,218,218,0.4)',
+              fontFamily: 'Roboto, sans-serif', fontWeight: 700, fontSize: 10,
+              letterSpacing: '0.1em', borderRadius: 3, transition: 'all 0.15s'
+            }}>{lbl}</button>
+          ))}
+        </div>
+
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.4)', margin: '14px 0 8px', textTransform: 'uppercase' }}>Background</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {activeBgList.map((img, i) => (
+            <div key={i} onClick={() => { setBgIdx(i); setBgManual(true); }} style={{
+              flex: 1, height: 48, borderRadius: 4, overflow: 'hidden',
+              border: bgIdx === i ? `2px solid ${acc}` : '2px solid rgba(255,255,255,0.08)',
+              backgroundImage: `url("${img}")`, backgroundSize: 'cover', backgroundPosition: 'center',
+              cursor: 'none', transition: 'border-color 0.2s',
+              boxShadow: bgIdx === i ? `0 0 12px ${acc}66` : 'none'
+            }} />
+          ))}
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 12, borderTop: `1px solid ${acc}22`, fontFamily: 'Roboto, sans-serif', fontSize: 9, color: 'rgba(218,218,218,0.2)', textAlign: 'center', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+          Nanna Tate · Potato Perfection
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>

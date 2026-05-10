@@ -1,0 +1,21 @@
+{
+  "name": "sbcfc-scraper",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Scheduled scraper that fetches Sad Boi Clique FC stats from EA Pro Clubs and writes them to Supabase. Runs locally for testing, on GitHub Actions in production.",
+  "type": "module",
+  "main": "src/run.ts",
+  "scripts": {
+    "scrape": "tsx src/run.ts",
+    "install-browser": "playwright install chromium"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.4",
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.3"
+  }
+}

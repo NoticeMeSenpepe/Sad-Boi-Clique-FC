@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sad Boi Clique FC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: #000;
+  overflow: hidden;
+  font-family: 'Roboto', sans-serif;
+  cursor: none;
+}
+
+/* Custom cursor */
+#cursor {
+  position: fixed; top: 0; left: 0; z-index: 9999;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #E4002B; pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: transform 0.05s, width 0.2s, height 0.2s, background 0.2s;
+  mix-blend-mode: difference;
+}
+#cursor-ring {
+  position: fixed; top: 0; left: 0; z-index: 9998;
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid rgba(228,0,43,0.5); pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: transform 0.12s ease-out, width 0.3s, height 0.3s, border-color 0.3s;
+}
+
+/* ── Stage ───────────────────────────────────────── */
+#stage {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Background layers */
+#bg-image {
+  position: absolute; inset: 0;
+  background-image: url('uploads/Sad Boi Clique Widescreen.png');
+  background-size: contain; background-position: center center;
+  background-repeat: no-repeat;
+  background-color: #030810;
+  opacity: 0; transition: opacity 2s ease;
+  filter: saturate(0.7);
+}
+#bg-overlay {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 120% 100% at 50% 60%, rgba(3,8,16,0.5) 0%, rgba(3,8,16,0.92) 70%, #030810 100%);
+}
+#bg-fleur {
+  position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Ctext x='40' y='56' text-anchor='middle' font-size='44' fill='rgba(255,255,255,0.025)'%3E⚜%3C/text%3E%3C/svg%3E");
+  opacity: 0; transition: opacity 1.5s ease 0.5s;
+}
+
+/* Rain of characters */
+#rain-canvas {
+  position: absolute; inset: 0; opacity: 0.12;
+}
+
+/* Red lightning lines */
+#lines-canvas {
+  position: absolute; inset: 0; pointer-events: none;
+}
+
+/* ── Content ─────────────────────────────────────── */
+#content {
+  position: relative; z-index: 10;
+  text-align: center; padding: 40px;
+  opacity: 0; transform: translateY(30px);
+  transition: opacity 1s ease, transform 1s ease;
+}
+#content.visible { opacity: 1; transform: translateY(0); }
+
+#badge {
+  width: 120px; height: 120px; margin: 0 auto 28px;
+  border-radius: 50%; overflow: hidden;
+  border: 2px solid rgba(228,0,43,0.4);
+  box-shadow: 0 0 60px rgba(228,0,43,0.3);
+  opacity: 0; transform: scale(0.6);
+  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.2,0,0,1);
+  background: #0a1020;
+}
+#badge.visible { opacity: 1; transform: scale(1); }
+#badge img { width: 100%; height: 100%; object-fit: cover; }
+
+.eyebrow {
+  font-family: 'Roboto', sans-serif; font-weight: 700;
+  font-size: 11px; letter-spacing: 0.3em; color: #E4002B;
+  text-transform: uppercase; margin-bottom: 18px;
+  opacity: 0; transform: translateY(10px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.eyebrow.visible { opacity: 1; transform: translateY(0); }
+
+#main-title {
+  font-family: 'Anton', sans-serif;
+  font-size: clamp(52px, 9vw, 120px);
+  color: #fff; line-height: 0.88;
+  text-transform: uppercase; letter-spacing: -0.01em;
+  text-shadow: 0 0 80px rgba(228,0,43,0.2);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+#main-title .line {
+  display: block; overflow: hidden;
+}
+#main-title .line span {
+  display: block;
+  transform: translateY(110%);
+  transition: transform 0.8s cubic-bezier(0.16,1,0.3,1);
+}
+#main-title .line.visible span { transform: translateY(0); }
+
+#subtitle {
+  font-family: 'Anton', sans-serif;
+  font-size: clamp(18px, 3vw, 38px);
+  color: #E4002B; letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 48px;
+  opacity: 0; transform: translateY(10px);
+  transition: opacity 0.7s ease 0.4s, transform 0.7s ease 0.4s;
+}
+#subtitle.visible { opacity: 1; transform: translateY(0); }
+
+/* ── CTA Button ──────────────────────────────────── */
+#cta-wrap {
+  opacity: 0; transform: translateY(16px);
+  transition: opacity 0.6s ease 0.6s, transform 0.6s ease 0.6s;
+}
+#cta-wrap.visible { opacity: 1; transform: translateY(0); }
+
+#cta {
+  position: relative; display: inline-block;
+  font-family: 'Anton', sans-serif; font-size: 18px;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: #fff; background: none; border: none;
+  cursor: none; padding: 0; overflow: hidden;
+}
+
+#cta-inner {
+  display: flex; align-items: center; gap: 16px;
+  padding: 18px 44px;
+  border: 1px solid rgba(228,0,43,0.5);
+  position: relative; overflow: hidden;
+  transition: border-color 0.3s;
+}
+
+#cta-inner::before {
+  content: ''; position: absolute; inset: 0;
+  background: #E4002B;
+  transform: scaleX(0); transform-origin: left;
+  transition: transform 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+
+#cta:hover #cta-inner { border-color: #E4002B; }
+#cta:hover #cta-inner::before { transform: scaleX(1); }
+#cta-text { position: relative; z-index: 1; }
+#cta-arrow {
+  position: relative; z-index: 1;
+  font-size: 22px; transition: transform 0.3s;
+}
+#cta:hover #cta-arrow { transform: translateX(8px); }
+
+/* ── Tagline ─────────────────────────────────────── */
+#tagline {
+  margin-top: 40px; font-family: 'Roboto', sans-serif;
+  font-weight: 300; font-size: 13px; font-style: italic;
+  color: rgba(218,218,218,0.35); letter-spacing: 0.08em;
+  opacity: 0; transition: opacity 1s ease 1s;
+}
+#tagline.visible { opacity: 1; }
+
+/* ── Stats strip at bottom ───────────────────────── */
+#stats-strip {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+  display: flex; border-top: 1px solid rgba(228,0,43,0.15);
+  background: rgba(3,8,16,0.9); backdrop-filter: blur(20px);
+  opacity: 0; transform: translateY(20px);
+  transition: opacity 0.8s ease 1.2s, transform 0.8s ease 1.2s;
+}
+#stats-strip.visible { opacity: 1; transform: translateY(0); }
+
+.stat-item {
+  flex: 1; padding: 14px 0; text-align: center;
+  border-right: 1px solid rgba(228,0,43,0.1);
+}
+.stat-item:last-child { border-right: none; }
+.stat-val {
+  font-family: 'Anton', sans-serif; font-size: 28px;
+  color: #E4002B; line-height: 1;
+}
+.stat-lbl {
+  font-family: 'Roboto', sans-serif; font-size: 8px;
+  font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
+  color: rgba(218,218,218,0.35); margin-top: 3px;
+}
+
+/* ── Scanline overlay ────────────────────────────── */
+#scanlines {
+  position: fixed; inset: 0; z-index: 5; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+}
+
+/* ── Glitch title effect ─────────────────────────── */
+@keyframes glitch-1 {
+  0%,96%,100% { transform: none; clip-path: none; }
+  97% { transform: translate(-3px,1px); clip-path: polygon(0 15%,100% 15%,100% 35%,0 35%); color: #E4002B; }
+  98% { transform: translate(3px,-1px); clip-path: polygon(0 60%,100% 60%,100% 80%,0 80%); }
+  99% { transform: translate(-1px,2px); clip-path: polygon(0 40%,100% 40%,100% 55%,0 55%); color: #00c8ff; }
+}
+
+@keyframes flicker-fade {
+  0%,94%,100% { opacity:1; }
+  95% { opacity:0.3; }
+  96% { opacity:0.9; }
+  97% { opacity:0.2; }
+  98% { opacity:1; }
+}
+
+#main-title { animation: flicker-fade 8s infinite 3s; }
+
+/* ── Noise texture ───────────────────────────────── */
+@keyframes noise {
+  0%,100% { transform: translate(0,0); }
+  10% { transform: translate(-2%,-2%); }
+  20% { transform: translate(2%,2%); }
+  30% { transform: translate(-1%,1%); }
+  40% { transform: translate(1%,-1%); }
+}
+
+/* ── Enter transition ────────────────────────────── */
+#transition-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: #E4002B;
+  transform: scaleY(0); transform-origin: top;
+  pointer-events: none;
+}
+
+.panel-enter {
+  animation: panelEnter 0.9s cubic-bezier(0.76,0,0.24,1) forwards;
+}
+@keyframes panelEnter {
+  0%   { transform: scaleY(0); transform-origin: bottom; }
+  50%  { transform: scaleY(1); transform-origin: bottom; }
+  50.01% { transform-origin: top; }
+  100% { transform: scaleY(0); transform-origin: top; }
+}
+
+/* ── Horizontal lines decoration ────────────────── */
+.h-line {
+  position: absolute; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(228,0,43,0.3), transparent);
+  opacity: 0; transition: opacity 1s ease;
+}
+.h-line.visible { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<canvas id="rain-canvas"></canvas>
+<canvas id="lines-canvas"></canvas>
+
+<div id="stage">
+  <div id="bg-image"></div>
+  <div id="bg-overlay"></div>
+  <div id="bg-fleur"></div>
+
+  <div class="h-line" id="hline-top" style="top: 18%"></div>
+  <div class="h-line" id="hline-bot" style="bottom: 18%"></div>
+
+  <div id="scanlines"></div>
+
+  <div id="content">
+    <div id="badge">
+      <img src="uploads/pasted-1777404204917-0.png" alt="SBCFC" />
+    </div>
+    <div class="eyebrow" id="eyebrow">Est. 2024 · Lincoln, England · EA Sports FC 26</div>
+    <div id="main-title">
+      <span class="line" id="line1"><span>SAD BOI</span></span>
+      <span class="line" id="line2"><span>CLIQUE FC</span></span>
+    </div>
+    <div id="subtitle">Chaos. Clique. Culture.</div>
+
+    <div id="cta-wrap">
+      <button id="cta" onclick="enterSite()">
+        <div id="cta-inner">
+          <span id="cta-text">EMBRACE SADNESS</span>
+          <span id="cta-arrow">→</span>
+        </div>
+      </button>
+    </div>
+
+    <div id="tagline">"We're not here to fit in. We're here to win."</div>
+  </div>
+</div>
+
+<div id="stats-strip">
+  <div class="stat-item"><div class="stat-val" id="s1">0</div><div class="stat-lbl">Goals This Season</div></div>
+  <div class="stat-item"><div class="stat-val" id="s2">0</div><div class="stat-lbl">Assists</div></div>
+  <div class="stat-item"><div class="stat-val" id="s3">0</div><div class="stat-lbl">Win Rate</div></div>
+  <div class="stat-item"><div class="stat-val" id="s4">0</div><div class="stat-lbl">Squad Players</div></div>
+  <div class="stat-item"><div class="stat-val" id="s5">2ND</div><div class="stat-lbl">League Position</div></div>
+</div>
+
+<div id="transition-overlay"></div>
+
+<script>
+// ── Custom cursor ──────────────────────────────────
+const cursor = document.getElementById('cursor');
+const cursorRing = document.getElementById('cursor-ring');
+let mx = window.innerWidth/2, my = window.innerHeight/2;
+let rx = mx, ry = my;
+
+document.addEventListener('mousemove', e => {
+  mx = e.clientX; my = e.clientY;
+  cursor.style.left = mx + 'px';
+  cursor.style.top  = my + 'px';
+});
+
+function animateRing() {
+  rx += (mx - rx) * 0.12;
+  ry += (my - ry) * 0.12;
+  cursorRing.style.left = rx + 'px';
+  cursorRing.style.top  = ry + 'px';
+  requestAnimationFrame(animateRing);
+}
+animateRing();
+
+document.addEventListener('mousedown', () => {
+  cursor.style.transform = 'translate(-50%,-50%) scale(2)';
+  cursorRing.style.width = '20px'; cursorRing.style.height = '20px';
+});
+document.addEventListener('mouseup', () => {
+  cursor.style.transform = 'translate(-50%,-50%) scale(1)';
+  cursorRing.style.width = '40px'; cursorRing.style.height = '40px';
+});
+
+// ── Rain canvas ────────────────────────────────────
+const rainCanvas = document.getElementById('rain-canvas');
+const rctx = rainCanvas.getContext('2d');
+const CHARS = '⚜SBCFC25/26CHAOSCLIQUENANNATATEPOWERGLORY'.split('');
+let drops = [];
+
+function initRain() {
+  rainCanvas.width  = window.innerWidth;
+  rainCanvas.height = window.innerHeight;
+  const cols = Math.floor(window.innerWidth / 22);
+  drops = Array.from({ length: cols }, () => Math.random() * -100);
+}
+
+function drawRain() {
+  rctx.fillStyle = 'rgba(3,8,16,0.05)';
+  rctx.fillRect(0, 0, rainCanvas.width, rainCanvas.height);
+  rctx.font = '14px "Roboto"';
+  drops.forEach((y, i) => {
+    const char = CHARS[Math.floor(Math.random() * CHARS.length)];
+    const alpha = Math.random() > 0.97 ? 0.8 : 0.18;
+    const col = Math.random() > 0.95 ? '#E4002B' : 'rgba(228,0,43,';
+    rctx.fillStyle = Math.random() > 0.95 ? 'rgba(228,0,43,0.9)' : `rgba(228,0,43,${alpha})`;
+    rctx.fillText(char, i * 22, y * 20);
+    drops[i] = y > rainCanvas.height / 20 && Math.random() > 0.975 ? 0 : y + 0.4;
+  });
+}
+initRain();
+setInterval(drawRain, 50);
+
+// ── Lines canvas ───────────────────────────────────
+const linesCanvas = document.getElementById('lines-canvas');
+const lctx = linesCanvas.getContext('2d');
+linesCanvas.width = window.innerWidth;
+linesCanvas.height = window.innerHeight;
+
+let lineParticles = [];
+
+function spawnLine() {
+  const x = Math.random() * window.innerWidth;
+  lineParticles.push({ x, y: 0, speed: 2 + Math.random() * 4, alpha: 0.15 + Math.random() * 0.2, width: 0.5 + Math.random() });
+}
+
+function drawLines() {
+  lctx.clearRect(0, 0, linesCanvas.width, linesCanvas.height);
+  if (Math.random() > 0.94) spawnLine();
+  lineParticles = lineParticles.filter(p => p.y < linesCanvas.height && p.alpha > 0);
+  lineParticles.forEach(p => {
+    lctx.beginPath();
+    lctx.moveTo(p.x, p.y);
+    lctx.lineTo(p.x, p.y + 60);
+    lctx.strokeStyle = `rgba(228,0,43,${p.alpha})`;
+    lctx.lineWidth = p.width;
+    lctx.stroke();
+    p.y += p.speed;
+    p.alpha -= 0.001;
+  });
+}
+setInterval(drawLines, 16);
+
+// ── Entry sequence ─────────────────────────────────
+function sequence() {
+  // 1. Fade in bg image
+  setTimeout(() => {
+    document.getElementById('bg-image').style.opacity = '1';
+    document.getElementById('bg-fleur').style.opacity = '1';
+  }, 200);
+
+  // 2. Badge
+  setTimeout(() => {
+    document.getElementById('badge').classList.add('visible');
+  }, 600);
+
+  // 3. Eyebrow
+  setTimeout(() => {
+    document.getElementById('eyebrow').classList.add('visible');
+  }, 1000);
+
+  // 4. Title lines
+  setTimeout(() => document.getElementById('line1').classList.add('visible'), 1300);
+  setTimeout(() => document.getElementById('line2').classList.add('visible'), 1500);
+
+  // 5. Subtitle
+  setTimeout(() => {
+    document.getElementById('subtitle').classList.add('visible');
+  }, 1800);
+
+  // 6. Content container
+  setTimeout(() => {
+    document.getElementById('content').classList.add('visible');
+  }, 1100);
+
+  // 7. CTA
+  setTimeout(() => {
+    document.getElementById('cta-wrap').classList.add('visible');
+  }, 2200);
+
+  // 8. Tagline
+  setTimeout(() => {
+    document.getElementById('tagline').classList.add('visible');
+  }, 2600);
+
+  // 9. Stats strip
+  setTimeout(() => {
+    document.getElementById('stats-strip').classList.add('visible');
+    animateStats();
+  }, 2800);
+
+  // 10. H-lines
+  setTimeout(() => {
+    document.getElementById('hline-top').classList.add('visible');
+    document.getElementById('hline-bot').classList.add('visible');
+  }, 1800);
+}
+
+// ── Stat counter animation ─────────────────────────
+function animateStats() {
+  const targets = { s1: 89, s2: 126, s3: 64, s4: 13 };
+  const duration = 2000;
+  const start = performance.now();
+
+  function tick(now) {
+    const p = Math.min((now - start) / duration, 1);
+    const ease = 1 - Math.pow(1 - p, 3);
+    document.getElementById('s1').textContent = Math.round(targets.s1 * ease);
+    document.getElementById('s2').textContent = Math.round(targets.s2 * ease);
+    document.getElementById('s3').textContent = Math.round(targets.s3 * ease) + '%';
+    document.getElementById('s4').textContent = Math.round(targets.s4 * ease);
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// ── Enter site ─────────────────────────────────────
+function enterSite() {
+  const overlay = document.getElementById('transition-overlay');
+  
+  // Flash effect
+  overlay.style.background = '#E4002B';
+  overlay.classList.add('panel-enter');
+  
+  // Glitch the title
+  const title = document.getElementById('main-title');
+  title.style.animation = 'glitch-1 0.3s forwards';
+  
+  // Navigate after transition
+  setTimeout(() => {
+    window.location.href = 'index.html';
+  }, 850);
+}
+
+// ── Keyboard enter ─────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') enterSite();
+});
+
+// ── Hover cursor enlarge on CTA ────────────────────
+const ctaEl = document.getElementById('cta');
+ctaEl.addEventListener('mouseenter', () => {
+  cursor.style.width = '20px';
+  cursor.style.height = '20px';
+  cursorRing.style.width = '60px';
+  cursorRing.style.height = '60px';
+  cursorRing.style.borderColor = 'rgba(228,0,43,0.9)';
+});
+ctaEl.addEventListener('mouseleave', () => {
+  cursor.style.width = '12px';
+  cursor.style.height = '12px';
+  cursorRing.style.width = '40px';
+  cursorRing.style.height = '40px';
+  cursorRing.style.borderColor = 'rgba(228,0,43,0.5)';
+});
+
+// ── Parallax on mouse move ─────────────────────────
+document.addEventListener('mousemove', e => {
+  const cx = (e.clientX / window.innerWidth  - 0.5) * 20;
+  const cy = (e.clientY / window.innerHeight - 0.5) * 10;
+  document.getElementById('bg-image').style.transform = `translate(${cx * 0.5}px, ${cy * 0.5}px) scale(1.05)`;
+  document.getElementById('content').style.transform = `translate(${cx * -0.3}px, ${cy * -0.3}px)`;
+});
+
+// ── Resize ─────────────────────────────────────────
+window.addEventListener('resize', () => {
+  initRain();
+  linesCanvas.width = window.innerWidth;
+  linesCanvas.height = window.innerHeight;
+});
+
+// Start
+sequence();
+</script>
+</body>
+</html>
