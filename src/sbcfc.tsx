@@ -980,6 +980,29 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
   const [pulseValues, setPulseValues] = React.useState({ pos: 0, rate: 0, gd: 0, pts: 0, matches: 0 });
   const players = useLivePlayers();
 
+  // Live fixtures: fetched once. All match-related panels on the home page
+  // (LAST RESULT mini-card, CURRENT FORM, the LAST MATCH detail panel,
+  // and the RECENT MATCHES grid) are derived from this single list.
+  const [liveFixtures, setLiveFixtures] = React.useState/* :FixtureRow[] */([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    getLiveFixtures(20).then((rows) => { if (!cancelled) setLiveFixtures(rows); }).catch(() => { /* keep empty */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  /** Stash the matchId in localStorage and navigate to the Fixtures page —
+   *  FixturesPage reads the same key on mount and auto-expands the match. */
+  const goToFixture = (matchId) => {
+    try { localStorage.setItem('sbc_focus_match', String(matchId)); } catch (e) { /* ignore */ }
+    setPage('fixtures');
+  };
+
+  // Derived helpers for the various match panels:
+  const lastMatch = liveFixtures[0] || null;
+  // Form: oldest → newest order so the row reads left-to-right like a "form line".
+  const formLast5 = liveFixtures.slice(0, 5).map((f) => f.result || '?').reverse();
+  const lastMatchColor = (r) => r === 'W' ? '#2a9d8f' : r === 'L' ? 'var(--accent)' : '#e9c46a';
+
   // Headlines mirror the news page order: lead first, then by date. Click jumps straight to that story.
   const headlines = SORTED_NEWS.slice(0, 4).map((n) => ({
     id: n.id,
@@ -1035,11 +1058,12 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
   }, []);
 
   const signings = [
-  { player: players.find((p) => p.id === 'panikova'), image: '/uploads/pasted-1777415983890-0.png', caption: 'FROM FERGANA VALLEY, UZBEKISTAN' },
-  { player: players.find((p) => p.id === 'gymskin'), image: '/uploads/pasted-1777416552965-0.png', caption: 'AURA PULSE ACTIVATED' },
-  { player: players.find((p) => p.id === 'karavavov'), image: '/uploads/Karavavov.png', caption: 'THE MOLDOVAN TRICKSTER' },
-  { player: players.find((p) => p.id === 'ricciardo'), image: '/uploads/Ricciardo.png', caption: 'THE HONEYBADGER. F1 TO FOOTBALL.' },
-  { player: players.find((p) => p.id === 'donnyp'), image: '/uploads/pasted-1777417166292-0.png', caption: 'STALWART. MAVERICK. CORNER TAKER.' }];
+  { player: players.find((p) => p.id === 'panikova'),    image: '/uploads/pasted-1777415983890-0.png', caption: 'FROM FERGANA VALLEY, UZBEKISTAN' },
+  { player: players.find((p) => p.id === 'gymskin'),     image: '/uploads/pasted-1777416552965-0.png', caption: 'AURA PULSE ACTIVATED' },
+  { player: players.find((p) => p.id === 'karavavov'),   image: '/uploads/Karavavov.png',              caption: 'THE MOLDOVAN TRICKSTER' },
+  { player: players.find((p) => p.id === 'ricciardo'),   image: '/uploads/Ricciardo.png',              caption: 'THE HONEYBADGER. F1 TO FOOTBALL.' },
+  { player: players.find((p) => p.id === 'donnyp'),      image: '/uploads/pasted-1777417166292-0.png', caption: 'STALWART. MAVERICK. CORNER TAKER.' },
+  { player: players.find((p) => p.id === 'oldreliable'), image: '/uploads/old-reliable.png',           caption: 'THE GLUE. ALWAYS AVAILABLE.' }];
 
 
   const topScorers = [...players].filter((p) => p.goals > 0).sort((a, b) => b.goals - a.goals).slice(0, 5);
@@ -1102,21 +1126,30 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
             {[
-              { label: 'NEXT MATCH', val: 'VS FC MIDNIGHT', sub: 'May 3 · 20:00 · HOME', color: 'var(--accent)' },
-              { label: 'LAST RESULT', val: '4 – 2', sub: 'vs The Ronaldo Enjoyers', color: '#2a9d8f' },
-              // Live values from the Pulse animation. Falls back to mock targets if Supabase is empty.
+              { label: 'NEXT MATCH',
+                val: 'TBC',
+                sub: 'Awaiting next fixture',
+                color: 'var(--accent)' },
+              { label: 'LAST RESULT',
+                val: lastMatch ? `${lastMatch.ourScore} – ${lastMatch.theirScore}` : '—',
+                sub:  lastMatch ? `vs ${lastMatch.opponent}` : 'No matches yet',
+                color: lastMatch ? lastMatchColor(lastMatch.result) : 'var(--accent)' },
+              // Live from the Pulse animation. Falls back to mock targets if Supabase is empty.
               { label: 'CURRENT DIVISION',
                 val: pulseValues.pos > 0 ? `DIV ${pulseValues.pos}` : '—',
                 sub: `${pulseValues.matches} matches · GD ${pulseValues.gd >= 0 ? '+' : ''}${pulseValues.gd}`,
                 color: 'var(--accent)' },
-              { label: 'CURRENT FORM', form: ['L', 'D', 'W', 'W', 'W'], sub: 'Last 5 matches', color: '#e9c46a' }].
+              { label: 'CURRENT FORM',
+                form: formLast5.length > 0 ? formLast5 : ['?', '?', '?', '?', '?'],
+                sub: liveFixtures.length > 0 ? `Last ${formLast5.length} matches` : 'Awaiting data',
+                color: '#e9c46a' }].
               map((w, i) =>
               <div key={i} className="sbc-glow-panel sbc-stat-panel" style={{ '--panel-color': w.color, background: 'rgba(8,15,30,0.85)', backdropFilter: 'blur(20px)', border: `1px solid ${w.color}33`, borderLeft: `3px solid ${w.color}`, borderRadius: 4, padding: '14px 20px', minWidth: 160 }}>
                 <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: w.color, marginBottom: 5, textTransform: 'uppercase' }}>{w.label}</div>
                 {w.form ? (
                   <div style={{ display: 'flex', gap: 5, alignItems: 'center', margin: '4px 0 2px' }}>
                     {w.form.map((r, j) => {
-                      const bg = r === 'W' ? '#2a9d8f' : r === 'D' ? 'rgba(255,255,255,0.22)' : '#e63946';
+                      const bg = r === 'W' ? '#2a9d8f' : r === 'D' ? 'rgba(255,255,255,0.22)' : r === 'L' ? '#e63946' : 'rgba(255,255,255,0.08)';
                       const sep = j === w.form.length - 1 ? <span key={'sep'+j} style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.2)', margin: '0 2px' }} /> : null;
                       return <React.Fragment key={j}>{sep}<div style={{ width: 18, height: 18, borderRadius: 3, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, color: '#fff' }}>{r}</div></React.Fragment>;
                     })}
@@ -1138,43 +1171,52 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
                 LATEST NEWS</button>
           </div>
 
-          {/* LAST MATCH PANEL — under CTAs in left column */}
-          <div onClick={() => setPage('fixtures')} className="sbc-glow-panel" style={{ '--panel-color': '#2a9d8f', marginTop: 6, maxWidth: 520, background: 'rgba(8,15,30,0.85)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderLeft: '3px solid #2a9d8f', borderRadius: 4, padding: '12px 16px', cursor: 'pointer' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.22em', color: '#2a9d8f', textTransform: 'uppercase' }}>● Last Match · WIN</div>
-              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.4)' }}>APR 26 · HOME</div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase', lineHeight: 1 }}>SBC FC</div>
-                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, color: 'rgba(218,218,218,0.4)', marginTop: 3, letterSpacing: '0.1em' }}>HOME</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 36, color: '#2a9d8f', lineHeight: 1 }}>4</div>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: 'rgba(218,218,218,0.3)' }}>–</div>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 36, color: '#e76f51', lineHeight: 1 }}>2</div>
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase', lineHeight: 1 }}>Ronaldo<br />Enjoyers</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-              {[
-                { min: '23\'', txt: 'Gymskin', clr: '#2a9d8f' },
-                { min: '41\'', txt: 'Panikova', clr: '#2a9d8f' },
-                { min: '55\'', txt: 'Cristiano J.', clr: '#e76f51' },
-                { min: '67\'', txt: 'Panikova', clr: '#2a9d8f' },
-                { min: '75\'', txt: 'Manuel R.', clr: '#e76f51' },
-                { min: '88\'', txt: 'Donny P', clr: '#2a9d8f' }].
-                map((g, i) =>
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 10, color: g.clr }}>{g.min}</span>
-                  <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, color: 'rgba(218,218,218,0.7)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{g.txt}</span>
+          {/* LAST MATCH PANEL — derives from the most recent live fixture.
+              Hidden until the scrape lands at least one match. Click to jump
+              to the Fixtures page with this match auto-expanded. */}
+          {lastMatch && (() => {
+            const col = lastMatchColor(lastMatch.result);
+            const resultWord = lastMatch.result === 'W' ? 'WIN' : lastMatch.result === 'L' ? 'LOSS' : 'DRAW';
+            // Substitute Sad Boi Clique character names where we have them; opponents stay raw.
+            const usNameMap = new Map(PLAYERS.filter((p) => p.eaUser).map((p) => [String(p.eaUser).toLowerCase(), p.name]));
+            const renderName = (raw) => usNameMap.get(String(raw).toLowerCase()) || raw;
+            return (
+              <div onClick={() => goToFixture(lastMatch.matchId)} className="sbc-glow-panel"
+                style={{ '--panel-color': col, marginTop: 6, maxWidth: 520,
+                         background: 'rgba(8,15,30,0.85)', backdropFilter: 'blur(20px)',
+                         border: '1px solid rgba(255,255,255,0.08)', borderLeft: `3px solid ${col}`,
+                         borderRadius: 4, padding: '12px 16px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.22em', color: col, textTransform: 'uppercase' }}>● Last Match · {resultWord}</div>
+                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.4)' }}>{lastMatch.dateLabel || '—'}</div>
                 </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase', lineHeight: 1 }}>{lastMatch.us.name || 'SBC FC'}</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 36, color: lastMatch.result === 'L' ? 'rgba(218,218,218,0.6)' : col, lineHeight: 1 }}>{lastMatch.ourScore}</div>
+                    <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: 'rgba(218,218,218,0.3)' }}>–</div>
+                    <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 36, color: lastMatch.result === 'L' ? '#e76f51' : 'rgba(218,218,218,0.6)', lineHeight: 1 }}>{lastMatch.theirScore}</div>
+                  </div>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase', lineHeight: 1 }}>{(lastMatch.opp.name || 'OPPONENT').toUpperCase()}</div>
+                  </div>
+                </div>
+                {lastMatch.scorers.length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    {lastMatch.scorers.map((s, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 10, color: '#2a9d8f' }}>⚽</span>
+                        <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, color: 'rgba(218,218,218,0.7)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{renderName(s.name)}{s.goals > 1 ? ` ×${s.goals}` : ''}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
-            </div>
-            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 10, color: '#2a9d8f', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 10, textAlign: 'right' }}>FULL REPORT →</div>
-          </div>
+                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 10, color: col, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 10, textAlign: 'right' }}>FULL REPORT →</div>
+              </div>
+            );
+          })()}
           </div>
 
           {/* RIGHT: Player Spotlight in hero */}
@@ -1372,26 +1414,30 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
           <button onClick={() => setPage('fixtures')} style={{ background: 'var(--accent)', border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 12, letterSpacing: '0.1em', padding: '9px 18px', borderRadius: 3, textTransform: 'uppercase' }}>ALL FIXTURES →</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-          {[
-            { res: 'W', us: 4, them: 2, opp: 'Ronaldo Enjoyers', date: 'APR 27', venue: 'HOME', clr: '#2a9d8f' },
-            { res: 'W', us: 3, them: 1, opp: 'FC Stamford',     date: 'APR 20', venue: 'AWAY', clr: '#2a9d8f' },
-            { res: 'W', us: 2, them: 0, opp: 'Aurora United',   date: 'APR 13', venue: 'HOME', clr: '#2a9d8f' },
-            { res: 'L', us: 1, them: 3, opp: 'Real Sadrid',     date: 'APR 06', venue: 'AWAY', clr: '#e63946' },
-            { res: 'D', us: 2, them: 2, opp: 'Inter Vibes',     date: 'MAR 30', venue: 'HOME', clr: '#e9c46a' }
-          ].map((m, i) => (
-            <div key={i} onClick={() => setPage('fixtures')} className="sbc-glow-panel" style={{ '--panel-color': m.clr, background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.08)', borderLeft: `3px solid ${m.clr}`, borderRadius: 4, padding: '14px 16px', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 11, color: m.clr, letterSpacing: '0.18em', textTransform: 'uppercase' }}>● {m.res === 'W' ? 'WIN' : m.res === 'L' ? 'LOSS' : 'DRAW'}</div>
-                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, color: 'rgba(218,218,218,0.4)', letterSpacing: '0.15em' }}>{m.date} · {m.venue}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 26, color: m.clr, lineHeight: 1 }}>{m.us}</div>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: 'rgba(218,218,218,0.3)' }}>–</div>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 26, color: 'rgba(218,218,218,0.5)', lineHeight: 1 }}>{m.them}</div>
-              </div>
-              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.65)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>vs {m.opp}</div>
+          {liveFixtures.length === 0 && (
+            <div style={{ gridColumn: '1 / -1', fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.45)', padding: '20px 0', textAlign: 'center' }}>
+              No matches played yet — they'll appear here once the next scrape from EA lands.
             </div>
-          ))}
+          )}
+          {liveFixtures.slice(0, 5).map((m) => {
+            const clr = lastMatchColor(m.result);
+            return (
+              <div key={m.matchId} onClick={() => goToFixture(m.matchId)} className="sbc-glow-panel"
+                style={{ '--panel-color': clr, background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.08)',
+                         borderLeft: `3px solid ${clr}`, borderRadius: 4, padding: '14px 16px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 11, color: clr, letterSpacing: '0.18em', textTransform: 'uppercase' }}>● {m.result === 'W' ? 'WIN' : m.result === 'L' ? 'LOSS' : 'DRAW'}</div>
+                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, color: 'rgba(218,218,218,0.4)', letterSpacing: '0.15em' }}>{m.dateLabel || '—'}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                  <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 26, color: clr, lineHeight: 1 }}>{m.ourScore}</div>
+                  <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: 'rgba(218,218,218,0.3)' }}>–</div>
+                  <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 26, color: 'rgba(218,218,218,0.5)', lineHeight: 1 }}>{m.theirScore}</div>
+                </div>
+                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.65)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>vs {m.opponent}</div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -1969,7 +2015,10 @@ const FixturesPage = () => {
   const [fixtures, setFixtures] = React.useState([]);
   const [status, setStatus] = React.useState('loading'); // 'loading' | 'live' | 'empty'
 
-  // Pull live league match history from Supabase on mount.
+  // Pull live league match history from Supabase on mount. If the home page
+  // (or anywhere else) stashed a focus matchId in localStorage, expand that
+  // match automatically once the data arrives, then clear the flag so a
+  // later visit to the page doesn't keep popping it open.
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1978,6 +2027,13 @@ const FixturesPage = () => {
         if (cancelled) return;
         setFixtures(rows);
         setStatus(rows.length > 0 ? 'live' : 'empty');
+        try {
+          const focusId = localStorage.getItem('sbc_focus_match');
+          if (focusId && rows.some((r) => r.matchId === focusId)) {
+            setExpanded(focusId);
+          }
+          localStorage.removeItem('sbc_focus_match');
+        } catch (e) { /* localStorage may be disabled */ }
       } catch {
         if (cancelled) return;
         setFixtures([]);
