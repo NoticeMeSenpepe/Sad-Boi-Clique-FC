@@ -977,7 +977,7 @@ const StoreCarousel = ({ loop, setPage }) => {
 // ── HOME PAGE ───────────────────────────────────────────────────
 const HomePage = ({ setPage, setSelectedPlayer }) => {
   const [headlineIdx, setHeadlineIdx] = React.useState(0);
-  const [pulseValues, setPulseValues] = React.useState({ pos: 0, rate: 0, gd: 0, pts: 0, matches: 0 });
+  const [pulseValues, setPulseValues] = React.useState({ pos: 0, rate: 0, gd: 0, pts: 0, matches: 0, skill: 0 });
   const players = useLivePlayers();
 
   // Live fixtures: fetched once. All match-related panels on the home page
@@ -1037,6 +1037,7 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
           gd:      Math.round(targets.gd      * ease),
           pts:     Math.round(targets.pts     * ease),
           matches: Math.round(targets.matches * ease),
+          skill:   Math.round(targets.skill   * ease),
         });
         if (p < 1) frame = requestAnimationFrame(animate);
       };
@@ -1047,11 +1048,11 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
         const live = await getPulseStats();
         if (cancelled) return;
         setPulseSource(live.source);
-        animateTo({ pos: live.position, rate: live.winRate, gd: live.goalDifference, pts: live.totalPoints, matches: live.gamesPlayed });
+        animateTo({ pos: live.position, rate: live.winRate, gd: live.goalDifference, pts: live.totalPoints, matches: live.gamesPlayed, skill: live.skillRating ?? 0 });
       } catch {
         if (cancelled) return;
         setPulseSource('mock');
-        animateTo({ pos: 2, rate: 64, gd: 28, pts: 59, matches: 280 });
+        animateTo({ pos: 2, rate: 64, gd: 28, pts: 59, matches: 280, skill: 0 });
       }
     })();
     return () => { cancelled = true; if (frame) cancelAnimationFrame(frame); };
@@ -1130,10 +1131,10 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
                 val: 'TBC',
                 sub: 'Awaiting next fixture',
                 color: 'var(--accent)' },
-              { label: 'LAST RESULT',
-                val: lastMatch ? `${lastMatch.ourScore} – ${lastMatch.theirScore}` : '—',
-                sub:  lastMatch ? `vs ${lastMatch.opponent}` : 'No matches yet',
-                color: lastMatch ? lastMatchColor(lastMatch.result) : 'var(--accent)' },
+              { label: 'SKILL RATING',
+                val: pulseValues.skill > 0 ? String(pulseValues.skill) : '—',
+                sub: 'Career — EA Pro Clubs',
+                color: '#9b5de5' },
               // Live from the Pulse animation. Falls back to mock targets if Supabase is empty.
               { label: 'CURRENT DIVISION',
                 val: pulseValues.pos > 0 ? `DIV ${pulseValues.pos}` : '—',
@@ -2902,14 +2903,14 @@ const AccountPageHeader = ({ subtitle, title }) => (
 
 
 // ── ADMIN PAGE ──────────────────────────────────────────────────
-// Phase 4B: empty frame, gated to admin users only. Phase 4C will
-// fill the inner cards with real CRUD UI for invite codes / news /
-// store / transfers / player lore.
+// Phase 4B introduced the empty frame. Phase 4C builds the editors,
+// one section at a time. Each section is a tab. The first to land is
+// "Invite Codes"; the others stay as "Coming soon" placeholders for
+// now and will be filled in subsequent commits.
 const AdminPage = ({ setPage }) => {
   const auth = useAuth();
+  const [tab, setTab] = React.useState('invites'); // 'invites' | 'news' | 'transfers' | 'store' | 'players'
 
-  // Defence-in-depth gate. Even if a non-admin somehow lands on this
-  // page (stale state, shared URL, etc.) we refuse to render the panel.
   if (auth.loading) {
     return (
       <div style={{ background: 'transparent', minHeight: '100vh' }}>
@@ -2934,76 +2935,209 @@ const AdminPage = ({ setPage }) => {
     );
   }
 
-  // Five sections that 4C will populate. Each card has a stub body
-  // describing what it will become — keeps the layout from looking
-  // empty while we wait to land the real CRUD UI.
-  const sections = [
-    {
-      title: 'Invite Codes',
-      blurb: 'Generate one-use codes for friends to sign up with. Replaces the SQL workflow we used for your bootstrap code.',
-      eta: 'Next up in 4C',
-      color: 'var(--accent)',
-    },
-    {
-      title: 'News Articles',
-      blurb: 'Add, edit and remove the front-page news stories. Each post has a headline, summary, body, lead image, tag (e.g. BREAKING / TRANSFER), and timestamp.',
-      eta: 'Phase 4C',
-      color: '#9b5de5',
-    },
-    {
-      title: 'Transfers',
-      blurb: 'Manage the running list of fictional transfers (signings / departures / loans). Each entry has a player, type, fee, narrative.',
-      eta: 'Phase 4C',
-      color: '#f4a261',
-    },
-    {
-      title: 'Store Items',
-      blurb: 'Manage the merch catalogue — name, price, sizes, photos, sold-out flag, optional tag (e.g. NEW DROP, LIMITED).',
-      eta: 'Phase 4C',
-      color: '#2a9d8f',
-    },
-    {
-      title: 'Player Lore',
-      blurb: 'Edit the static parts of every player profile — archetype, lore, tags, accent colour, kit number. Live stats from EA stay untouched.',
-      eta: 'Phase 4C',
-      color: '#00c8ff',
-    },
+  const tabs = [
+    { id: 'invites',   label: 'Invite Codes',  ready: true  },
+    { id: 'news',      label: 'News Articles', ready: false },
+    { id: 'transfers', label: 'Transfers',     ready: false },
+    { id: 'store',     label: 'Store Items',   ready: false },
+    { id: 'players',   label: 'Player Lore',   ready: false },
   ];
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <AccountPageHeader subtitle={`Signed in as ${auth.profile.display_name}`} title="ADMIN" />
       <RainbowBar />
-      <div className="sbc-page-pad" style={{ padding: '40px 64px 96px', maxWidth: 1100, margin: '0 auto' }}>
-        <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '24px 28px', marginBottom: 28 }}>
-          <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 8 }}>Welcome, {auth.profile.display_name}</div>
-          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.7)', lineHeight: 1.6 }}>
-            This is the admin landing page. Each section below maps to one
-            piece of editable content. Right now it's just placeholders —
-            the actual editors land in the next phase. You'll be able to
-            invite friends, post news, register transfers, manage merch
-            and tweak player lore all from this page.
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 18 }}>
-          {sections.map((s) => (
-            <div key={s.title} style={{
-              background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)',
-              borderLeft: `3px solid ${s.color}`, borderRadius: 6, padding: '20px 22px',
-              display: 'flex', flexDirection: 'column', gap: 10,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.title}</div>
-                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: s.color, background: `${s.color}1f`, padding: '3px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{s.eta}</div>
-              </div>
-              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.7)', lineHeight: 1.55 }}>{s.blurb}</div>
-              <button disabled style={{ alignSelf: 'flex-start', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(218,218,218,0.4)', cursor: 'not-allowed', fontFamily: 'Roboto, sans-serif', fontWeight: 700, fontSize: 10, letterSpacing: '0.18em', padding: '7px 12px', borderRadius: 3, textTransform: 'uppercase' }}>
-                COMING SOON
-              </button>
-            </div>
+      <div className="sbc-page-pad" style={{ padding: '32px 64px 96px', maxWidth: 1100, margin: '0 auto' }}>
+        {/* Tab strip */}
+        <div style={{ display: 'flex', gap: 0, marginBottom: 24, background: 'rgba(8,15,30,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, overflow: 'hidden', flexWrap: 'wrap' }}>
+          {tabs.map((t, i) => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              style={{
+                flex: '1 1 auto', padding: '12px 18px', border: 'none', cursor: 'pointer',
+                background: tab === t.id ? 'rgba(228,0,43,0.18)' : 'transparent',
+                color: tab === t.id ? '#fff' : 'rgba(218,218,218,0.55)',
+                fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.12em', textTransform: 'uppercase',
+                borderLeft: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)',
+                transition: 'all 0.15s', whiteSpace: 'nowrap',
+              }}>
+              {tab === t.id ? '▶ ' : ''}{t.label}
+              {!t.ready && <span style={{ marginLeft: 6, fontFamily: 'Roboto, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.4)' }}>SOON</span>}
+            </button>
           ))}
         </div>
+
+        {tab === 'invites' && <AdminInvitesPanel />}
+        {tab !== 'invites' && (
+          <div style={{ background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '40px 28px', textAlign: 'center' }}>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 8 }}>Coming soon</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.7)', lineHeight: 1.6, maxWidth: 560, margin: '0 auto' }}>
+              {tab === 'news'      && 'Post, edit and delete front-page news stories. Each post: headline, tag, summary, body, lead image, timestamp.'}
+              {tab === 'transfers' && 'Register fictional signings / departures / loans. Each entry: player, type, fee, narrative.'}
+              {tab === 'store'     && 'Manage the merch catalogue — name, price, sizes, photos, sold-out flag, optional tag.'}
+              {tab === 'players'   && 'Edit the static parts of player profiles — archetype, lore, tags, accent colour, kit number. Live stats from EA stay untouched.'}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── ADMIN: Invite Codes panel ────────────────────────────────────
+const AdminInvitesPanel = () => {
+  const auth = useAuth();
+  const [codes, setCodes]   = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr]       = React.useState(null);
+  const [busy, setBusy]     = React.useState(false);
+  const [draftCode, setDraftCode] = React.useState('');
+  const [draftNotes, setDraftNotes] = React.useState('');
+  const [copied, setCopied] = React.useState(null);
+
+  const fetchCodes = React.useCallback(async () => {
+    const sb = (await import('./supabase')).getSupabase();
+    if (!sb) { setErr('No backend connection.'); setLoading(false); return; }
+    const { data, error } = await sb
+      .from('invite_codes')
+      .select('code, created_at, expires_at, used_at, used_by, notes')
+      .order('created_at', { ascending: false });
+    if (error) setErr(error.message);
+    setCodes(data || []);
+    setLoading(false);
+  }, []);
+
+  // Load all profile rows we need for "used by" name display.
+  const [namesByUserId, setNamesByUserId] = React.useState/* :Map<string,string> */(new Map());
+  React.useEffect(() => {
+    let cancelled = false;
+    fetchCodes();
+    (async () => {
+      const sb = (await import('./supabase')).getSupabase();
+      if (!sb) return;
+      const { data } = await sb.from('profiles').select('id, display_name');
+      if (cancelled || !data) return;
+      const m = new Map();
+      for (const row of data) m.set(row.id, row.display_name);
+      setNamesByUserId(m);
+    })();
+    return () => { cancelled = true; };
+  }, [fetchCodes]);
+
+  const generateRandom = () => {
+    // 8-char A-Z + digits; skip 0/O/1/I to avoid confusion when typed.
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s = '';
+    for (let i = 0; i < 8; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
+    setDraftCode(s);
+  };
+
+  const create = async () => {
+    setErr(null);
+    const code = draftCode.trim();
+    if (!code) { setErr('Enter a code, or click "Generate random" to make one.'); return; }
+    setBusy(true);
+    const sb = (await import('./supabase')).getSupabase();
+    const { error } = await sb.from('invite_codes').insert({
+      code, notes: draftNotes.trim() || null, created_by: auth.user.id,
+    });
+    setBusy(false);
+    if (error) {
+      setErr(error.code === '23505' ? 'That code already exists — pick another.' : error.message);
+      return;
+    }
+    setDraftCode('');
+    setDraftNotes('');
+    fetchCodes();
+  };
+
+  const revoke = async (code) => {
+    if (!confirm(`Revoke (delete) invite code "${code}"? This can't be undone.`)) return;
+    const sb = (await import('./supabase')).getSupabase();
+    const { error } = await sb.from('invite_codes').delete().eq('code', code);
+    if (error) { setErr(error.message); return; }
+    fetchCodes();
+  };
+
+  const copy = async (code) => {
+    try { await navigator.clipboard.writeText(code); setCopied(code); setTimeout(() => setCopied((c) => c === code ? null : c), 1400); }
+    catch { /* ignore */ }
+  };
+
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 24 }}>
+      {/* Generate */}
+      <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '20px 24px' }}>
+        <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 14 }}>Generate Invite Code</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px,1fr) auto 2fr auto', gap: 10, alignItems: 'center' }}>
+          <input type="text" value={draftCode} onChange={(e) => setDraftCode(e.target.value)} placeholder="Code (e.g. GYMSKIN-2026 or click Generate)"
+                 style={{ background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '10px 12px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, letterSpacing: '0.04em' }} />
+          <button onClick={generateRandom} type="button"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', padding: '10px 14px', borderRadius: 4, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Generate random</button>
+          <input type="text" value={draftNotes} onChange={(e) => setDraftNotes(e.target.value)} placeholder="Notes (optional — e.g. 'For Donny P')"
+                 style={{ background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '10px 12px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13 }} />
+          <button onClick={create} disabled={busy || !draftCode.trim()}
+                  style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.16em', padding: '10px 18px', borderRadius: 4, textTransform: 'uppercase', whiteSpace: 'nowrap', opacity: (busy || !draftCode.trim()) ? 0.5 : 1 }}>
+            {busy ? '…' : 'Create →'}
+          </button>
+        </div>
+        {err && <div style={{ marginTop: 10, fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)' }}>{err}</div>}
+      </div>
+
+      {/* Existing codes table */}
+      <div style={{ background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.2fr 0.6fr 1.2fr 1.4fr 0.7fr', alignItems: 'center', padding: '10px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}>
+            {['Code','Created','Status','Used by','Notes',''].map((h, i) => (
+              <div key={i} style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>{h}</div>
+            ))}
+        </div>
+        {loading && <div style={{ padding: 20, fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>Loading…</div>}
+        {!loading && codes.length === 0 && (
+          <div style={{ padding: 20, fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>No invite codes yet. Create one above.</div>
+        )}
+        {codes.map((c, i) => {
+          const isUsed = !!c.used_at;
+          const isExpired = c.expires_at && new Date(c.expires_at) < new Date();
+          const status = isUsed ? 'USED' : isExpired ? 'EXPIRED' : 'UNUSED';
+          const statusColor = isUsed ? 'rgba(218,218,218,0.45)' : isExpired ? '#e9c46a' : '#2a9d8f';
+          const usedByName = c.used_by ? (namesByUserId.get(c.used_by) || '—') : '—';
+          return (
+            <div key={c.code} style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.2fr 0.6fr 1.2fr 1.4fr 0.7fr', alignItems: 'center', padding: '12px 18px', borderBottom: i < codes.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <code style={{ fontFamily: 'Roboto Mono, ui-monospace, monospace', fontSize: 12, color: '#fff', background: 'rgba(255,255,255,0.05)', padding: '3px 7px', borderRadius: 3 }}>{c.code}</code>
+                {!isUsed && (
+                  <button onClick={() => copy(c.code)} title="Copy"
+                          style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(218,218,218,0.65)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '3px 8px', borderRadius: 3, textTransform: 'uppercase' }}>
+                    {copied === c.code ? 'Copied ✓' : 'Copy'}
+                  </button>
+                )}
+              </div>
+              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.65)' }}>{fmtDate(c.created_at)}</div>
+              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: statusColor, textTransform: 'uppercase' }}>● {status}</div>
+              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: '#fff' }}>{usedByName}</div>
+              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.7)' }}>{c.notes || '—'}</div>
+              <div>
+                {!isUsed && (
+                  <button onClick={() => revoke(c.code)}
+                          style={{ background: 'transparent', border: '1px solid rgba(228,0,43,0.4)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>
+                    Revoke
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.4)', lineHeight: 1.6, padding: '0 4px' }}>
+        Codes are single-use — once a friend signs up with one, it's marked
+        used and the row sticks around as an audit trail. Revoke deletes
+        only unused codes; used codes can't be revoked.
       </div>
     </div>
   );
