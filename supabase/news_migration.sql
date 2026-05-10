@@ -10,7 +10,9 @@
 -- become inert — every article on the site is read from the database
 -- and editable from the admin panel.
 -- =====================================================================
-do $$
+-- The outer DO block uses a tagged dollar-quote ($body$) so the inner
+-- $$...$$ literal strings don't accidentally close the block early.
+do $body$
 begin
   if (select count(*) from public.news_articles) = 0 then
 
@@ -151,4 +153,4 @@ begin
      now() - interval '395 days');
 
   end if;
-end $$;
+end $body$;
