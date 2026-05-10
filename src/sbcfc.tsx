@@ -249,9 +249,10 @@ export const PLAYERS = [
   timeline: [{ era: 'The Golden Era', note: '41 goals. Beloved. Everything was fine.' }, { era: 'The Incident', note: '[REDACTED BY CLUB LEGAL TEAM]' }, { era: 'The Exile', note: 'Location unknown. Number 99 retired. Then un-retired. Then retired again.' }]
 },
 {
-  // Sixth human-controlled player. No photo yet — placeholder until/unless one is supplied.
-  // eaUser matches the real EA Gamertag so live stats from member_state get merged in.
-  id: 'oldreliable', name: 'Old Reliable', shortName: 'OLD RELIABLE', number: 6, image: null, eaUser: 'Shmuelly',
+  // Sixth human-controlled player. eaUser matches the real EA Gamertag so live
+  // stats from member_state get merged in. Photo is the magazine-style portrait
+  // supplied by the user.
+  id: 'oldreliable', name: 'Old Reliable', shortName: 'OLD RELIABLE', number: 6, image: '/uploads/old-reliable.png', eaUser: 'Shmuelly',
   position: 'CM', rating: 78, rarity: 'rare', nationality: '🌟',
   goals: 0, apps: 0, assists: 0, cleanSheets: null,
   stats: { PAC: 70, SHO: 65, PAS: 80, DRI: 72, DEF: 70, PHY: 74 },
@@ -1760,6 +1761,166 @@ const StatsPage = ({ setSelectedPlayer }) => {
 
 };
 
+// ── MATCH REPORT (expanded view inside each fixture row) ───────────
+// Layout mirrors EA's official Pro Clubs match-report page:
+//   - Top: us name + score    score + opp name    "Days Ago: N"
+//   - Match-stats grid (Shots / Red Cards / Saves / Tackles / Passes)
+//   - Members section: switcher between the two clubs; each player row
+//     expands to show Assists / Tackles Made / Pass Attempts / Shots /
+//     Passes Made / Red Cards.
+const MatchReport = ({ fixture }) => {
+  const [side, setSide] = React.useState('us'); // 'us' | 'opp'
+  const [expandedPlayer, setExpandedPlayer] = React.useState(null);
+
+  const aggUs   = fixture.us.aggregate  || {};
+  const aggOpp  = fixture.opp.aggregate || {};
+  const stats = [
+    { label: 'Shots on Target', us: aggUs.shots       ?? '—', opp: aggOpp.shots       ?? '—' },
+    { label: 'Red Cards',       us: aggUs.redcards    ?? '—', opp: aggOpp.redcards    ?? '—' },
+    { label: 'Saves',           us: aggUs.saves       ?? '—', opp: aggOpp.saves       ?? '—' },
+    { label: 'Tackles',         us: aggUs.tacklesmade ?? '—', opp: aggOpp.tacklesmade ?? '—' },
+    { label: 'Passes',          us: aggUs.passesmade  ?? '—', opp: aggOpp.passesmade  ?? '—' },
+  ];
+
+  const activeSide = side === 'us' ? fixture.us : fixture.opp;
+  const switchTo = (s) => { setSide(s); setExpandedPlayer(null); };
+
+  // EA's official crest CDN — same URL pattern that ea.com itself uses.
+  const crestUrl = (crestId) =>
+    crestId ? `https://eafc24.content.easports.com/fifa/fltOnlineAssets/24B23FDE-7835-41C2-87A2-F453DFDB2E82/2024/fcweb/crests/256x256/l${crestId}.png` : null;
+
+  const Crest = ({ side: s, size = 56 }) => {
+    const [failed, setFailed] = React.useState(false);
+    const url = crestUrl(s.crestId);
+    const showImg = !!url && !failed;
+    const initials = (s.name || '?').slice(0, 1).toUpperCase();
+    return (
+      <div style={{ width: size, height: size, borderRadius: 6, overflow: 'hidden', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {showImg ? (
+          <img src={url} alt={s.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            onError={() => setFailed(true)} />
+        ) : (
+          <span style={{ fontFamily: 'Anton, sans-serif', fontSize: size * 0.42, color: 'rgba(218,218,218,0.55)' }}>{initials}</span>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div onClick={(e) => e.stopPropagation()} style={{ padding: '20px 20px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+      {/* Header: clubs + score + days ago */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Crest side={fixture.us} />
+          <div>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', textTransform: 'uppercase', lineHeight: 1 }}>{fixture.us.name}</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase', marginTop: 4 }}>HOME / AWAY</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '8px 16px', fontFamily: 'Anton, sans-serif', fontSize: 28, color: '#fff', minWidth: 44, textAlign: 'center' }}>{fixture.ourScore}</div>
+          <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '8px 16px', fontFamily: 'Anton, sans-serif', fontSize: 28, color: '#fff', minWidth: 44, textAlign: 'center' }}>{fixture.theirScore}</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', textTransform: 'uppercase', lineHeight: 1 }}>{fixture.opp.name}</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase', marginTop: 4 }}>OPPONENT</div>
+          </div>
+          <Crest side={fixture.opp} />
+        </div>
+        <div style={{ marginLeft: 'auto', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.4)', textTransform: 'uppercase' }}>
+          {fixture.daysAgo === 0 ? 'TODAY' : fixture.daysAgo === 1 ? '1 DAY AGO' : `${fixture.daysAgo} DAYS AGO`}
+        </div>
+      </div>
+
+      {/* Stats summary */}
+      <div style={{ marginTop: 22, background: 'rgba(8,15,30,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, overflow: 'hidden' }}>
+        {stats.map((s, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', alignItems: 'center', padding: '10px 18px', borderBottom: i < stats.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textAlign: 'left' }}>{s.us}</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.16em', color: 'rgba(218,218,218,0.6)', textTransform: 'uppercase', textAlign: 'center' }}>{s.label}</div>
+            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textAlign: 'right' }}>{s.opp}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Members section: switcher + expandable rows */}
+      <div style={{ marginTop: 22 }}>
+        <div style={{ display: 'flex', gap: 0, marginBottom: 12, background: 'rgba(8,15,30,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, overflow: 'hidden' }}>
+          {[
+            { id: 'us',  name: fixture.us.name,  s: fixture.us },
+            { id: 'opp', name: fixture.opp.name, s: fixture.opp },
+          ].map((opt, i) => (
+            <button key={opt.id} onClick={() => switchTo(opt.id)}
+              style={{
+                flex: 1, padding: '10px 14px', border: 'none', cursor: 'pointer',
+                background: side === opt.id ? 'rgba(228,0,43,0.18)' : 'transparent',
+                color: side === opt.id ? '#fff' : 'rgba(218,218,218,0.55)',
+                fontFamily: 'Anton, sans-serif', fontSize: 12, letterSpacing: '0.14em', textTransform: 'uppercase',
+                borderLeft: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)',
+                transition: 'all 0.2s',
+              }}>
+              {side === opt.id ? '▶ ' : ''}{opt.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Player rows */}
+        <div style={{ background: 'rgba(8,15,30,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, overflow: 'hidden' }}>
+          {/* Header */}
+          <div style={{ display: 'grid', gridTemplateColumns: '24px 2fr 1fr 1fr 1fr', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}>
+            <div />
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>Member</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>Position</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase', textAlign: 'right' }}>Goals</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase', textAlign: 'right' }}>Rating</div>
+          </div>
+          {activeSide.players.length === 0 && (
+            <div style={{ padding: '14px 16px', fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.5)' }}>No player records for this club in this match.</div>
+          )}
+          {activeSide.players.map((p) => {
+            const isExp = expandedPlayer === p.name;
+            return (
+              <div key={p.name}>
+                <div onClick={() => setExpandedPlayer(isExp ? null : p.name)}
+                  style={{ display: 'grid', gridTemplateColumns: '24px 2fr 1fr 1fr 1fr', alignItems: 'center', padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)', background: isExp ? 'rgba(228,0,43,0.06)' : 'transparent', transition: 'background 0.15s' }}>
+                  <div style={{ color: 'rgba(218,218,218,0.5)', fontSize: 10 }}>{isExp ? '▼' : '▶'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'none' }}>
+                    {p.name}
+                    {p.isMotm && <span title="Man of the Match" style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.15em', color: '#e9c46a', background: 'rgba(233,196,106,0.12)', border: '1px solid rgba(233,196,106,0.3)', padding: '1px 6px', borderRadius: 2, textTransform: 'uppercase' }}>★ MOTM</span>}
+                  </div>
+                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.7)', textTransform: 'capitalize' }}>{p.position ?? '—'}</div>
+                  <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: p.goals > 0 ? '#2a9d8f' : '#fff', textAlign: 'right' }}>{p.goals}</div>
+                  <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', textAlign: 'right' }}>{p.rating !== null ? p.rating.toFixed(2) : '—'}</div>
+                </div>
+                {isExp && (
+                  <div style={{ padding: '12px 16px 16px 40px', background: 'rgba(228,0,43,0.04)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+                      {[
+                        { label: 'Assists',       value: p.assists },
+                        { label: 'Tackles Made',  value: p.tacklesMade },
+                        { label: 'Pass Attempts', value: p.passAttempts },
+                        { label: 'Shots',         value: p.shots },
+                        { label: 'Passes Made',   value: p.passesMade },
+                        { label: 'Red Cards',     value: p.redCards },
+                      ].map((s, i) => (
+                        <div key={i} style={{ background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 4, padding: '8px 10px' }}>
+                          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>{s.label}</div>
+                          <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', marginTop: 4 }}>{s.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── FIXTURES PAGE ───────────────────────────────────────────────
 const FixturesPage = () => {
   const [expanded, setExpanded] = React.useState(null);
@@ -1813,12 +1974,10 @@ const FixturesPage = () => {
         )}
         {fixtures.map((f) => {
           const col = colourFor(f.result);
-          const aggUs  = f.ourClubAggregate || {};
-          const aggThem = f.oppClubAggregate || {};
           return (
-            <div key={f.matchId} style={{ background: 'rgba(10,22,40,0.7)', border: `1px solid ${col}44`, borderRadius: 8, overflow: 'hidden', marginBottom: 10, cursor: 'pointer' }}
-              onClick={() => setExpanded(expanded === f.matchId ? null : f.matchId)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', borderLeft: `4px solid ${col}` }}>
+            <div key={f.matchId} style={{ background: 'rgba(10,22,40,0.7)', border: `1px solid ${col}44`, borderRadius: 8, overflow: 'hidden', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', borderLeft: `4px solid ${col}`, cursor: 'pointer' }}
+                onClick={() => setExpanded(expanded === f.matchId ? null : f.matchId)}>
                 <div style={{ width: 34, height: 34, borderRadius: 4, background: col, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', flexShrink: 0 }}>{f.result}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
@@ -1830,37 +1989,7 @@ const FixturesPage = () => {
                 <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 28, color: '#fff', letterSpacing: '0.05em' }}>{f.ourScore} – {f.theirScore}</div>
                 <div style={{ color: 'rgba(218,218,218,0.3)', fontSize: 12, marginLeft: 8 }}>{expanded === f.matchId ? '▲' : '▼'}</div>
               </div>
-              {expanded === f.matchId && (
-                <div style={{ padding: '0 20px 18px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  {f.motm && (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(233,196,106,0.1)', border: '1px solid rgba(233,196,106,0.25)', borderRadius: 4, padding: '6px 14px', marginTop: 14, marginBottom: 12 }}>
-                      <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.15em', color: '#e9c46a', textTransform: 'uppercase' }}>★ MOTM</span>
-                      <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase' }}>{f.motm}</span>
-                    </div>
-                  )}
-                  {f.scorers && f.scorers.length > 0 && (
-                    <div style={{ marginBottom: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {f.scorers.map((s, i) =>
-                        <TagChip key={i} label={`⚽ ${s.name}${s.goals > 1 ? ' ×' + s.goals : ''}`} color="rgba(42,157,143,0.1)" textColor="#2a9d8f" />
-                      )}
-                    </div>
-                  )}
-                  {/* Match-aggregate stats from EA's payload — passes/shots/tackles for both sides */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginTop: 10 }}>
-                    {[
-                      { label: 'Shots',         us: aggUs.shots ?? '—',         them: aggThem.shots ?? '—' },
-                      { label: 'Passes',        us: aggUs.passesmade ?? '—',    them: aggThem.passesmade ?? '—' },
-                      { label: 'Tackles',       us: aggUs.tacklesmade ?? '—',   them: aggThem.tacklesmade ?? '—' },
-                      { label: 'Goals',         us: aggUs.goals ?? f.ourScore,  them: aggThem.goals ?? f.theirScore },
-                    ].map((s, i) => (
-                      <div key={i} style={{ background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 4, padding: '8px 10px', textAlign: 'center' }}>
-                        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>{s.label}</div>
-                        <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', marginTop: 4 }}>{s.us} <span style={{ color: 'rgba(218,218,218,0.4)' }}>vs</span> {s.them}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {expanded === f.matchId && <MatchReport fixture={f} />}
             </div>
           );
         })}

@@ -317,10 +317,36 @@ export async function getLiveMatches(limit = 30): Promise<LiveMatch[]> {
 // ── Fixtures (rich match summaries for the Fixtures page) ────────────
 
 export type FixtureResult = 'W' | 'L' | 'D';
+
+export interface PlayerMatchStats {
+  name: string;
+  position: string | null;
+  goals: number;
+  assists: number;
+  rating: number | null;
+  shots: number;
+  passesMade: number;
+  passAttempts: number;
+  tacklesMade: number;
+  redCards: number;
+  saves: number;
+  isMotm: boolean;
+}
+
+export interface ClubMatchSide {
+  clubId: string;
+  name: string;
+  crestId: string | null;
+  score: number;
+  aggregate: Record<string, unknown> | null;
+  players: PlayerMatchStats[];
+}
+
 export interface FixtureRow {
   matchId: string;
   playedAt: string | null;
   dateLabel: string;
+  daysAgo: number | null;
   opponent: string;
   ourScore: number;
   theirScore: number;
@@ -328,8 +354,9 @@ export interface FixtureRow {
   matchType: string;
   scorers: { name: string; goals: number }[];
   motm: string | null;
-  ourClubAggregate: Record<string, unknown> | null;
-  oppClubAggregate: Record<string, unknown> | null;
+  // Two-sided view of the match for the EA-style report layout.
+  us:  ClubMatchSide;
+  opp: ClubMatchSide;
 }
 
 function fmtDateLabel(iso: string | null): string {
@@ -361,11 +388,11 @@ export async function getLiveFixtures(limit = 30): Promise<FixtureRow[]> {
 
   return data.map((row) => {
     const blob = (row.data || {}) as Record<string, unknown>;
-    const clubs   = (blob.clubs   || {}) as Record<string, Record<string, unknown>>;
-    const players = (blob.players || {}) as Record<string, Record<string, Record<string, unknown>>>;
+    const clubs     = (blob.clubs     || {}) as Record<string, Record<string, unknown>>;
+    const players   = (blob.players   || {}) as Record<string, Record<string, Record<string, unknown>>>;
     const aggregate = (blob.aggregate || {}) as Record<string, Record<string, unknown>>;
 
-    const us  = clubs[SBC_CLUB_ID] || {};
+    const us   = clubs[SBC_CLUB_ID] || {};
     const oppId = Object.keys(clubs).find((k) => k !== SBC_CLUB_ID) || '';
     const them = clubs[oppId] || {};
 
@@ -375,32 +402,71 @@ export async function getLiveFixtures(limit = 30): Promise<FixtureRow[]> {
     const result: FixtureResult | null =
       ourScore > theirScore ? 'W' : ourScore < theirScore ? 'L' : 'D';
 
-    // Scorers: filter our team's players by goals > 0, accumulating their goal count.
-    const ourPlayers = players[SBC_CLUB_ID] || {};
-    const scorers: { name: string; goals: number }[] = [];
-    let motm: string | null = null;
-    for (const p of Object.values(ourPlayers)) {
-      const name  = pick(p, ['playername'], str);
-      const goals = num(p['goals']) ?? 0;
-      const isMom = num(p['mom']) === 1;
-      if (name && goals > 0) scorers.push({ name, goals });
-      if (name && isMom) motm = name;
-    }
-    scorers.sort((a, b) => b.goals - a.goals);
+    // Build a clean per-side view (club name, crest, players, aggregates).
+    const buildSide = (clubId: string, raw: Record<string, unknown>, score: number): ClubMatchSide => {
+      const details = (raw.details || {}) as Record<string, unknown>;
+      const customKit = (details.customKit || {}) as Record<string, unknown>;
+      const playerMap = players[clubId] || {};
+      const list: PlayerMatchStats[] = [];
+      for (const p of Object.values(playerMap)) {
+        const name = pick(p, ['playername'], str);
+        if (!name) continue;
+        list.push({
+          name,
+          position:     pick(p, ['pos', 'proPos'], str),
+          goals:        num(p['goals'])         ?? 0,
+          assists:      num(p['assists'])       ?? 0,
+          rating:       num(p['rating']),
+          shots:        num(p['shots'])         ?? 0,
+          passesMade:   num(p['passesmade'])    ?? 0,
+          passAttempts: num(p['passattempts'])  ?? 0,
+          tacklesMade:  num(p['tacklesmade'])   ?? 0,
+          redCards:     num(p['redcards'])      ?? 0,
+          saves:        num(p['saves'])         ?? 0,
+          isMotm:       num(p['mom']) === 1,
+        });
+      }
+      // Highest in-game rating first matches what EA shows on the official site.
+      list.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+      return {
+        clubId,
+        name: pick(details, ['name', 'clubName'], str) ?? (clubId === SBC_CLUB_ID ? 'Sad Boi Clique' : 'UNKNOWN'),
+        crestId: pick(customKit, ['crestAssetId'], str),
+        score,
+        aggregate: aggregate[clubId] ?? null,
+        players: list,
+      };
+    };
+
+    const usSide  = buildSide(SBC_CLUB_ID, us,   ourScore);
+    const oppSide = buildSide(oppId, them, theirScore);
+
+    // Scorers / MOTM derived from our side, for the collapsed-row chips.
+    const scorers = usSide.players
+      .filter((p) => p.goals > 0)
+      .map((p) => ({ name: p.name, goals: p.goals }))
+      .sort((a, b) => b.goals - a.goals);
+    const motm = usSide.players.find((p) => p.isMotm)?.name ?? null;
+
+    const playedAtIso = (row.played_at as string | null) ?? null;
+    const daysAgo = playedAtIso
+      ? Math.max(0, Math.floor((Date.now() - new Date(playedAtIso).getTime()) / (1000 * 60 * 60 * 24)))
+      : null;
 
     return {
       matchId: row.match_id as string,
-      playedAt: (row.played_at as string | null) ?? null,
-      dateLabel: fmtDateLabel((row.played_at as string | null) ?? null),
-      opponent: pick(them['details'] as Record<string, unknown> | undefined, ['name', 'clubName'], str) ?? 'UNKNOWN',
+      playedAt: playedAtIso,
+      dateLabel: fmtDateLabel(playedAtIso),
+      daysAgo,
+      opponent: oppSide.name,
       ourScore,
       theirScore,
       result,
       matchType: (row.match_type as string) || 'leagueMatch',
       scorers,
       motm,
-      ourClubAggregate: aggregate[SBC_CLUB_ID] ?? null,
-      oppClubAggregate: oppId ? aggregate[oppId] ?? null : null,
+      us:  usSide,
+      opp: oppSide,
     };
   });
 }
