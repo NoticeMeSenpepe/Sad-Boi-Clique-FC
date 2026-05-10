@@ -17,12 +17,14 @@ import { getSupabase, SBC_CLUB_ID, SBC_PLATFORM } from './supabase';
 
 // ── Shapes the website expects ───────────────────────────────────────
 export interface PulseStats {
-  position: number;
-  winRate: number;          // 0-100
-  goalDifference: number;
-  totalPoints: number;
+  position: number;          // currently the club's best division — see notes in getPulseStats
+  winRate: number;           // 0-100, career
+  goalDifference: number;    // career
+  totalPoints: number;       // career (3*wins + draws)
+  skillRating: number | null;// career skill rating, used as a richer fallback
+  gamesPlayed: number;       // career
   source: 'live' | 'mock';
-  fetchedAt: string | null; // ISO
+  fetchedAt: string | null;  // ISO
 }
 
 export interface ClubInfo {
@@ -60,6 +62,8 @@ const MOCK_PULSE: PulseStats = {
   winRate: 64,
   goalDifference: 28,
   totalPoints: 59,
+  skillRating: null,
+  gamesPlayed: 0,
   source: 'mock',
   fetchedAt: null,
 };
@@ -95,6 +99,27 @@ function pick<T>(obj: Record<string, unknown> | null | undefined, keys: string[]
   return null;
 }
 
+/**
+ * EA wraps several response payloads in containers we don't care about:
+ *   - overallStats: returned as an array `[{ ... }]`.
+ *   - clubInfo:     returned as an object keyed by clubId, `{ "477926": {...} }`.
+ * This unwraps both shapes back to the inner record.
+ */
+function unwrapEaContainer(v: unknown): Record<string, unknown> | null {
+  if (!v || typeof v !== 'object') return null;
+  if (Array.isArray(v)) {
+    const first = v[0];
+    return (first && typeof first === 'object') ? (first as Record<string, unknown>) : null;
+  }
+  const obj = v as Record<string, unknown>;
+  const keys = Object.keys(obj);
+  // Single numeric key → return its value (the clubId-keyed shape).
+  if (keys.length === 1 && /^\d+$/.test(keys[0]!) && obj[keys[0]!] && typeof obj[keys[0]!] === 'object') {
+    return obj[keys[0]!] as Record<string, unknown>;
+  }
+  return obj;
+}
+
 // ── Accessors ────────────────────────────────────────────────────────
 
 /**
@@ -115,12 +140,12 @@ export async function getPulseStats(): Promise<PulseStats> {
 
   if (error || !data) return MOCK_PULSE;
   const blob = (data.data || {}) as Record<string, unknown>;
-  const stats = (blob['overallStats'] || blob['stats'] || blob) as Record<string, unknown>;
+  const stats = unwrapEaContainer(blob['overallStats']) ?? unwrapEaContainer(blob['stats']) ?? blob;
 
   const wins   = pick(stats, ['wins', 'totalWins', 'winsTotal'], num) ?? 0;
   const losses = pick(stats, ['losses', 'totalLosses'], num) ?? 0;
   const draws  = pick(stats, ['ties', 'draws', 'totalDraws'], num) ?? 0;
-  const games  = wins + losses + draws;
+  const games  = pick(stats, ['gamesPlayed'], num) ?? (wins + losses + draws);
   const winRatePct = games > 0 ? Math.round((wins / games) * 100) : 0;
 
   const gd =
@@ -128,13 +153,22 @@ export async function getPulseStats(): Promise<PulseStats> {
     ((pick(stats, ['goalsFor', 'goals'], num) ?? 0) - (pick(stats, ['goalsAgainst', 'goalsConceded'], num) ?? 0));
 
   const points = pick(stats, ['points', 'totalPoints', 'pts'], num) ?? (wins * 3 + draws);
-  const position = pick(stats, ['position', 'leaguePosition', 'currentPosition'], num) ?? MOCK_PULSE.position;
+  // EA's overallStats endpoint returns CAREER stats, not a current league
+  // standing. There is no "league position" field. Surface `bestDivision`
+  // as an alternative position-like signal so the front-end can render
+  // something meaningful (e.g. "DIV 3"). Fronts that absolutely need a
+  // numeric ranking can fall back to mock.
+  const bestDivision = pick(stats, ['bestDivision', 'currentDivision'], num);
+  const position = bestDivision ?? pick(stats, ['position', 'leaguePosition', 'currentPosition'], num) ?? MOCK_PULSE.position;
+  const skillRating = pick(stats, ['skillRating'], num);
 
   return {
     position,
     winRate: winRatePct,
     goalDifference: gd,
     totalPoints: points,
+    skillRating,
+    gamesPlayed: games,
     source: 'live',
     fetchedAt: data.fetched_at as string,
   };
@@ -154,15 +188,69 @@ export async function getClubInfo(): Promise<ClubInfo> {
 
   if (error || !data) return MOCK_CLUB;
   const blob = (data.data || {}) as Record<string, unknown>;
-  const info = (blob['clubInfo'] || blob['info'] || blob) as Record<string, unknown>;
+  const info = unwrapEaContainer(blob['clubInfo']) ?? unwrapEaContainer(blob['info']) ?? blob;
+
+  // crest is nested under `customKit.crestAssetId` on EA's response; surface
+  // the most likely places we'd find it in.
+  const crestNested = info?.['customKit'] && typeof info['customKit'] === 'object'
+    ? (info['customKit'] as Record<string, unknown>)
+    : null;
 
   return {
     id: SBC_CLUB_ID,
     name: pick(info, ['name', 'clubName'], str) ?? MOCK_CLUB.name,
-    crestId: pick(info, ['crestId', 'clubCrestId'], num),
+    crestId: pick(info, ['crestId', 'clubCrestId'], num)
+      ?? (crestNested ? pick(crestNested, ['crestAssetId'], num) : null),
     source: 'live',
     fetchedAt: data.fetched_at as string,
   };
+}
+
+/**
+ * Returns a Map of EA Gamertag (lowercased) → live stats for the human players.
+ * AI / fictional characters have no `eaUser` and aren't in this map; the Squad
+ * page falls back to mock data for them.
+ */
+export interface LiveMemberStats {
+  gamertag: string;
+  goals: number;
+  assists: number;
+  gamesPlayed: number;
+  manOfTheMatch: number;
+  ratingAverage: number | null;
+  proOverall: number | null;
+  proName: string | null;
+  favoritePosition: string | null;
+  fetchedAt: string;
+}
+
+export async function getLiveMembersByEaUser(): Promise<Map<string, LiveMemberStats>> {
+  const sb = getSupabase();
+  const out = new Map<string, LiveMemberStats>();
+  if (!sb) return out;
+  const { data, error } = await sb
+    .from('member_state')
+    .select('name, data, fetched_at')
+    .eq('club_id', SBC_CLUB_ID)
+    .eq('platform', SBC_PLATFORM);
+  if (error || !data) return out;
+  for (const row of data) {
+    const blob = (row.data || {}) as Record<string, unknown>;
+    const stats = (blob.stats || {}) as Record<string, unknown>;
+    out.set((row.name as string).toLowerCase(), {
+      gamertag: row.name as string,
+      goals:         pick(stats, ['goals'], num)         ?? 0,
+      assists:       pick(stats, ['assists'], num)       ?? 0,
+      gamesPlayed:   pick(stats, ['gamesPlayed'], num)   ?? 0,
+      manOfTheMatch: pick(stats, ['manOfTheMatch'], num) ?? 0,
+      ratingAverage: pick(stats, ['ratingAve'], num),
+      proOverall:    pick(stats, ['proOverall'], num),
+      proName:       pick(stats, ['proName'], str),
+      favoritePosition: pick(stats, ['favoritePosition'], str),
+      fetchedAt: row.fetched_at as string,
+    });
+  }
+  return out;
 }
 
 /** Returns all members for the squad page. Empty array if no live data yet. */
@@ -222,6 +310,97 @@ export async function getLiveMatches(limit = 30): Promise<LiveMatch[]> {
       theirScore: them,
       matchType:  (row.match_type as string | null) ?? null,
       raw: blob,
+    };
+  });
+}
+
+// ── Fixtures (rich match summaries for the Fixtures page) ────────────
+
+export type FixtureResult = 'W' | 'L' | 'D';
+export interface FixtureRow {
+  matchId: string;
+  playedAt: string | null;
+  dateLabel: string;
+  opponent: string;
+  ourScore: number;
+  theirScore: number;
+  result: FixtureResult | null;
+  matchType: string;
+  scorers: { name: string; goals: number }[];
+  motm: string | null;
+  ourClubAggregate: Record<string, unknown> | null;
+  oppClubAggregate: Record<string, unknown> | null;
+}
+
+function fmtDateLabel(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+/**
+ * League match history for the Fixtures page. Returns clean per-match summaries
+ * derived from EA's raw payloads. Newest first.
+ */
+export async function getLiveFixtures(limit = 30): Promise<FixtureRow[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+
+  const { data, error } = await sb
+    .from('match_state')
+    .select('match_id, played_at, match_type, data')
+    .eq('club_id', SBC_CLUB_ID)
+    .eq('platform', SBC_PLATFORM)
+    .eq('match_type', 'leagueMatch')
+    .order('played_at', { ascending: false, nullsFirst: false })
+    .limit(limit);
+
+  if (error || !data) return [];
+
+  return data.map((row) => {
+    const blob = (row.data || {}) as Record<string, unknown>;
+    const clubs   = (blob.clubs   || {}) as Record<string, Record<string, unknown>>;
+    const players = (blob.players || {}) as Record<string, Record<string, Record<string, unknown>>>;
+    const aggregate = (blob.aggregate || {}) as Record<string, Record<string, unknown>>;
+
+    const us  = clubs[SBC_CLUB_ID] || {};
+    const oppId = Object.keys(clubs).find((k) => k !== SBC_CLUB_ID) || '';
+    const them = clubs[oppId] || {};
+
+    const ourScore   = num(us['score'])   ?? num(us['goals']) ?? 0;
+    const theirScore = num(them['score']) ?? num(them['goals']) ?? num(us['goalsAgainst']) ?? 0;
+
+    const result: FixtureResult | null =
+      ourScore > theirScore ? 'W' : ourScore < theirScore ? 'L' : 'D';
+
+    // Scorers: filter our team's players by goals > 0, accumulating their goal count.
+    const ourPlayers = players[SBC_CLUB_ID] || {};
+    const scorers: { name: string; goals: number }[] = [];
+    let motm: string | null = null;
+    for (const p of Object.values(ourPlayers)) {
+      const name  = pick(p, ['playername'], str);
+      const goals = num(p['goals']) ?? 0;
+      const isMom = num(p['mom']) === 1;
+      if (name && goals > 0) scorers.push({ name, goals });
+      if (name && isMom) motm = name;
+    }
+    scorers.sort((a, b) => b.goals - a.goals);
+
+    return {
+      matchId: row.match_id as string,
+      playedAt: (row.played_at as string | null) ?? null,
+      dateLabel: fmtDateLabel((row.played_at as string | null) ?? null),
+      opponent: pick(them['details'] as Record<string, unknown> | undefined, ['name', 'clubName'], str) ?? 'UNKNOWN',
+      ourScore,
+      theirScore,
+      result,
+      matchType: (row.match_type as string) || 'leagueMatch',
+      scorers,
+      motm,
+      ourClubAggregate: aggregate[SBC_CLUB_ID] ?? null,
+      oppClubAggregate: oppId ? aggregate[oppId] ?? null : null,
     };
   });
 }

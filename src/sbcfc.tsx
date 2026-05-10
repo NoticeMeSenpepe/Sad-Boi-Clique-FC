@@ -7,7 +7,64 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 // @ts-nocheck
 import React from 'react';
-import { getPulseStats } from './liveData';
+import { getPulseStats, getLiveFixtures, getLiveMembersByEaUser, type LiveMemberStats } from './liveData';
+
+/**
+ * Hook: returns the PLAYERS array with live EA stats merged in for every
+ * player who has an `eaUser` field (the human members of the club). AI/
+ * fictional characters keep their hand-authored mock stats.
+ *
+ * The live fetch happens once; results are cached at module level so
+ * pages that mount/unmount don't re-hit Supabase.
+ */
+let _liveMergedCache: any[] | null = null;
+let _liveMergedInflight: Promise<any[]> | null = null;
+
+function mergeLivePlayers(map: Map<string, LiveMemberStats>): any[] {
+  return PLAYERS.map((p: any) => {
+    if (!p.eaUser) return { ...p, isLive: false };
+    const live = map.get(p.eaUser.toLowerCase());
+    if (!live) return { ...p, isLive: false };
+    return {
+      ...p,
+      goals:   live.goals,
+      assists: live.assists,
+      apps:    live.gamesPlayed,
+      rating:  live.proOverall ?? p.rating,
+      // Keep the full live record around for the profile modal.
+      liveStats: live,
+      isLive: true,
+    };
+  });
+}
+
+async function loadMergedPlayers(): Promise<any[]> {
+  if (_liveMergedCache) return _liveMergedCache;
+  if (_liveMergedInflight) return _liveMergedInflight;
+  _liveMergedInflight = (async () => {
+    try {
+      const map = await getLiveMembersByEaUser();
+      const merged = mergeLivePlayers(map);
+      _liveMergedCache = merged;
+      return merged;
+    } catch {
+      return PLAYERS;
+    } finally {
+      _liveMergedInflight = null;
+    }
+  })();
+  return _liveMergedInflight;
+}
+
+function useLivePlayers(): any[] {
+  const [players, setPlayers] = React.useState<any[]>(PLAYERS);
+  React.useEffect(() => {
+    let cancelled = false;
+    loadMergedPlayers().then(merged => { if (!cancelled) setPlayers(merged); });
+    return () => { cancelled = true; };
+  }, []);
+  return players;
+}
 
 /** "1st" / "2nd" / "3rd" / "4th"… for league-position display. */
 function ordinalSuffix(n: number): string {
@@ -192,14 +249,18 @@ export const PLAYERS = [
   timeline: [{ era: 'The Golden Era', note: '41 goals. Beloved. Everything was fine.' }, { era: 'The Incident', note: '[REDACTED BY CLUB LEGAL TEAM]' }, { era: 'The Exile', note: 'Location unknown. Number 99 retired. Then un-retired. Then retired again.' }]
 },
 {
-  id: 'oldreliable', name: 'Old Reliable', shortName: 'OLD RELIABLE', number: 6, image: null, eaUser: 'OldReliable_06',
-  position: 'CM', rating: 74, nationality: '?',
-  goals: 12, apps: 41, assists: 18, cleanSheets: null,
-  stats: { PAC: 64, SHO: 70, PAS: 78, DRI: 72, DEF: 76, PHY: 80 },
-  tags: ['Special Appearance', 'Whereabouts Unknown', 'Tactical Mystery'],
-  accentColor: '#8a8a8a', glowColor: 'rgba(138,138,138,0.3)',
-  archetype: 'Phantom Midfielder',
-  lore: 'Vanishes between fixtures. Reappears unannounced. A figure in club mythology more than club statistics. Whereabouts unconfirmed. Name not indicative of reliability.',
+  // Sixth human-controlled player. No photo yet — placeholder until/unless one is supplied.
+  // eaUser matches the real EA Gamertag so live stats from member_state get merged in.
+  id: 'oldreliable', name: 'Old Reliable', shortName: 'OLD RELIABLE', number: 6, image: null, eaUser: 'Shmuelly',
+  position: 'CM', rating: 78, rarity: 'rare', nationality: '🌟',
+  goals: 0, apps: 0, assists: 0, cleanSheets: null,
+  stats: { PAC: 70, SHO: 65, PAS: 80, DRI: 72, DEF: 70, PHY: 74 },
+  tags: ['Steady', 'Quietly Effective', 'Always Available'],
+  accentColor: '#06d6a0', glowColor: 'rgba(6,214,160,0.4)',
+  archetype: 'The Glue',
+  lore: 'Holds the team together. Doesn\'t score, doesn\'t need to. Always exactly where the ball is going to be — or already moving the play before the ball arrives.',
+  timeline: [
+  { era: 'The Quiet Era', note: 'Low-key brilliant. The teammates know.' }],
   role: 'CM'
 }];
 
@@ -278,7 +339,9 @@ const NavBar = ({ page, setPage }) => {
   { id: 'stats', label: 'STATS' },
   { id: 'transfers', label: 'TRANSFERS' },
   { id: 'fixtures', label: 'FIXTURES' },
-  { id: 'league', label: 'TABLE' },
+  // 'league' (the parody Premier-League-style table) removed at user request —
+  // no real-world table exists for an EA Pro Clubs custom club. The page
+  // component still exists but is unreachable through the main nav.
   { id: 'store', label: 'STORE' },
   { id: 'account', label: '' },
   { id: 'basket', label: 'BASKET' }];
@@ -906,7 +969,8 @@ const StoreCarousel = ({ loop, setPage }) => {
 // ── HOME PAGE ───────────────────────────────────────────────────
 const HomePage = ({ setPage, setSelectedPlayer }) => {
   const [headlineIdx, setHeadlineIdx] = React.useState(0);
-  const [pulseValues, setPulseValues] = React.useState({ pos: 0, rate: 0, gd: 0, pts: 0 });
+  const [pulseValues, setPulseValues] = React.useState({ pos: 0, rate: 0, gd: 0, pts: 0, matches: 0 });
+  const players = useLivePlayers();
 
   // Headlines mirror the news page order: lead first, then by date. Click jumps straight to that story.
   const headlines = SORTED_NEWS.slice(0, 4).map((n) => ({
@@ -937,10 +1001,11 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
         const p = Math.min((ts - start) / 2200, 1);
         const ease = 1 - Math.pow(1 - p, 3);
         setPulseValues({
-          pos:  Math.round(targets.pos  * ease) || 1,
-          rate: Math.round(targets.rate * ease),
-          gd:   Math.round(targets.gd   * ease),
-          pts:  Math.round(targets.pts  * ease),
+          pos:     Math.round(targets.pos     * ease) || 1,
+          rate:    Math.round(targets.rate    * ease),
+          gd:      Math.round(targets.gd      * ease),
+          pts:     Math.round(targets.pts     * ease),
+          matches: Math.round(targets.matches * ease),
         });
         if (p < 1) frame = requestAnimationFrame(animate);
       };
@@ -951,25 +1016,25 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
         const live = await getPulseStats();
         if (cancelled) return;
         setPulseSource(live.source);
-        animateTo({ pos: live.position, rate: live.winRate, gd: live.goalDifference, pts: live.totalPoints });
+        animateTo({ pos: live.position, rate: live.winRate, gd: live.goalDifference, pts: live.totalPoints, matches: live.gamesPlayed });
       } catch {
         if (cancelled) return;
         setPulseSource('mock');
-        animateTo({ pos: 2, rate: 64, gd: 28, pts: 59 });
+        animateTo({ pos: 2, rate: 64, gd: 28, pts: 59, matches: 280 });
       }
     })();
     return () => { cancelled = true; if (frame) cancelAnimationFrame(frame); };
   }, []);
 
   const signings = [
-  { player: PLAYERS.find((p) => p.id === 'panikova'), image: '/uploads/pasted-1777415983890-0.png', caption: 'FROM FERGANA VALLEY, UZBEKISTAN' },
-  { player: PLAYERS.find((p) => p.id === 'gymskin'), image: '/uploads/pasted-1777416552965-0.png', caption: 'AURA PULSE ACTIVATED' },
-  { player: PLAYERS.find((p) => p.id === 'karavavov'), image: '/uploads/Karavavov.png', caption: 'THE MOLDOVAN TRICKSTER' },
-  { player: PLAYERS.find((p) => p.id === 'ricciardo'), image: '/uploads/Ricciardo.png', caption: 'THE HONEYBADGER. F1 TO FOOTBALL.' },
-  { player: PLAYERS.find((p) => p.id === 'donnyp'), image: '/uploads/pasted-1777417166292-0.png', caption: 'STALWART. MAVERICK. CORNER TAKER.' }];
+  { player: players.find((p) => p.id === 'panikova'), image: '/uploads/pasted-1777415983890-0.png', caption: 'FROM FERGANA VALLEY, UZBEKISTAN' },
+  { player: players.find((p) => p.id === 'gymskin'), image: '/uploads/pasted-1777416552965-0.png', caption: 'AURA PULSE ACTIVATED' },
+  { player: players.find((p) => p.id === 'karavavov'), image: '/uploads/Karavavov.png', caption: 'THE MOLDOVAN TRICKSTER' },
+  { player: players.find((p) => p.id === 'ricciardo'), image: '/uploads/Ricciardo.png', caption: 'THE HONEYBADGER. F1 TO FOOTBALL.' },
+  { player: players.find((p) => p.id === 'donnyp'), image: '/uploads/pasted-1777417166292-0.png', caption: 'STALWART. MAVERICK. CORNER TAKER.' }];
 
 
-  const topScorers = [...PLAYERS].filter((p) => p.goals > 0).sort((a, b) => b.goals - a.goals).slice(0, 5);
+  const topScorers = [...players].filter((p) => p.goals > 0).sort((a, b) => b.goals - a.goals).slice(0, 5);
   const h = headlines[headlineIdx];
 
   return (
@@ -1032,9 +1097,9 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
               { label: 'NEXT MATCH', val: 'VS FC MIDNIGHT', sub: 'May 3 · 20:00 · HOME', color: 'var(--accent)' },
               { label: 'LAST RESULT', val: '4 – 2', sub: 'vs The Ronaldo Enjoyers', color: '#2a9d8f' },
               // Live values from the Pulse animation. Falls back to mock targets if Supabase is empty.
-              { label: 'LEAGUE POSITION',
-                val: pulseValues.pos > 0 ? `${pulseValues.pos}${ordinalSuffix(pulseValues.pos)}` : '—',
-                sub: `${pulseValues.pts} pts · GD ${pulseValues.gd >= 0 ? '+' : ''}${pulseValues.gd}`,
+              { label: 'CURRENT DIVISION',
+                val: pulseValues.pos > 0 ? `DIV ${pulseValues.pos}` : '—',
+                sub: `${pulseValues.matches} matches · GD ${pulseValues.gd >= 0 ? '+' : ''}${pulseValues.gd}`,
                 color: 'var(--accent)' },
               { label: 'CURRENT FORM', form: ['L', 'D', 'W', 'W', 'W'], sub: 'Last 5 matches', color: '#e9c46a' }].
               map((w, i) =>
@@ -1106,7 +1171,7 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
 
           {/* RIGHT: Player Spotlight in hero */}
           {(() => {
-            const spotPlayers = (PLAYERS || []).filter((p) => p.image);
+            const spotPlayers = (players || []).filter((p) => p.image);
             const [spIdx, setSpIdx] = React.useState(0);
             const [spHov, setSpHov] = React.useState(false);
             React.useEffect(() => {
@@ -1459,10 +1524,10 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
         <RainbowBar />
         <div className="sbc-pulse sbc-pulse-footer" style={{ background: 'var(--accent)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', padding: '0 64px' }}>
           {[
-          { label: 'LEAGUE POSITION', val: pulseValues.pos, suffix: pulseValues.pos <= 1 ? 'ST' : 'ND' },
-          { label: 'WIN RATE', val: pulseValues.rate, suffix: '%' },
-          { label: 'GOAL DIFFERENCE', val: (pulseValues.gd >= 0 ? '+' : '') + pulseValues.gd, suffix: '' },
-          { label: 'TOTAL POINTS', val: pulseValues.pts, suffix: '' }].
+          { label: 'CURRENT DIVISION', val: 'DIV ' + pulseValues.pos, suffix: '' },
+          { label: 'WIN RATE',         val: pulseValues.rate, suffix: '%' },
+          { label: 'TOTAL MATCHES',    val: pulseValues.matches, suffix: '' },
+          { label: 'GOAL DIFFERENCE',  val: (pulseValues.gd >= 0 ? '+' : '') + pulseValues.gd, suffix: '' }].
           map((item, i) =>
           <div key={i} style={{ padding: '22px 0', textAlign: 'center', borderRight: i < 3 ? '1px solid rgba(255,255,255,0.18)' : 'none' }}>
               <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 42, color: '#fff', lineHeight: 1 }}>{item.val}{item.suffix}</div>
@@ -1479,9 +1544,10 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
 const SquadPage = ({ setSelectedPlayer }) => {
   const [filter, setFilter] = React.useState('ALL');
   const [hovered, setHovered] = React.useState(null);
+  const players = useLivePlayers();   // human players carry their real EA stats here
   const positions = ['ALL', 'GK', 'DEF', 'MID', 'FWD'];
   const posMap = { GK: 'GK', CB: 'DEF', LB: 'DEF', RB: 'DEF', CDM: 'MID', CM: 'MID', CAM: 'MID', RW: 'FWD', LW: 'FWD', ST: 'FWD', CF: 'FWD' };
-  const filtered = filter === 'ALL' ? PLAYERS : PLAYERS.filter((p) => posMap[p.position] === filter);
+  const filtered = filter === 'ALL' ? players : players.filter((p) => posMap[p.position] === filter);
 
   return (
     <div style={{ minHeight: '100vh', background: 'transparent' }}>
@@ -1496,7 +1562,7 @@ const SquadPage = ({ setSelectedPlayer }) => {
           <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, fontWeight: 300, color: 'rgba(218,218,218,0.6)', marginTop: 8, fontStyle: 'italic' }}>Chaos. Clique. Culture.</div>
         </div>
         <div style={{ position: 'absolute', right: 64, bottom: 32, textAlign: 'right' }}>
-          <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 42, color: 'rgba(228,0,43,0.15)', lineHeight: 1 }}>{PLAYERS.length}</div>
+          <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 42, color: 'rgba(228,0,43,0.15)', lineHeight: 1 }}>{players.length}</div>
           <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.35)', textTransform: 'uppercase' }}>Players</div>
         </div>
       </div>
@@ -1581,8 +1647,9 @@ const SquadPage = ({ setSelectedPlayer }) => {
 
 // ── STATS PAGE ──────────────────────────────────────────────────
 const StatsPage = ({ setSelectedPlayer }) => {
-  const scorers = [...PLAYERS].filter((p) => p.goals > 0).sort((a, b) => b.goals - a.goals);
-  const assisters = [...PLAYERS].filter((p) => p.assists > 0).sort((a, b) => b.assists - a.assists);
+  const players = useLivePlayers();
+  const scorers = [...players].filter((p) => p.goals > 0).sort((a, b) => b.goals - a.goals);
+  const assisters = [...players].filter((p) => p.assists > 0).sort((a, b) => b.assists - a.assists);
   const maxGoals = scorers[0]?.goals || 1;
 
   return (
@@ -1696,27 +1763,28 @@ const StatsPage = ({ setSelectedPlayer }) => {
 // ── FIXTURES PAGE ───────────────────────────────────────────────
 const FixturesPage = () => {
   const [expanded, setExpanded] = React.useState(null);
-  const getCol = (f) => {
-    if (!f.result) return '#00c8ff';
-    return f.result.us > f.result.them ? '#2a9d8f' : f.result.us < f.result.them ? 'var(--accent)' : '#e9c46a';
-  };
-  const getLabel = (f) => {
-    if (!f.result) return null;
-    return f.result.us > f.result.them ? 'W' : f.result.us < f.result.them ? 'L' : 'D';
-  };
+  const [fixtures, setFixtures] = React.useState([]);
+  const [status, setStatus] = React.useState('loading'); // 'loading' | 'live' | 'empty'
 
-  const fixtureWeight = (f) => {
-    const m = (f.date || '').match(/^([A-Za-z]{3})\s+(\d+)/);
-    if (!m) return 0;
-    const monthMap = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
-    const mi = monthMap[m[1].toLowerCase()] ?? 0;
-    return mi * 100 + parseInt(m[2], 10);
-  };
-  const sortedFixtures = (() => {
-    const futures = FIXTURES.filter(f => !f.result).slice().sort((a, b) => fixtureWeight(a) - fixtureWeight(b));
-    const pasts = FIXTURES.filter(f => f.result).slice().sort((a, b) => fixtureWeight(b) - fixtureWeight(a));
-    return [...futures, ...pasts];
-  })();
+  // Pull live league match history from Supabase on mount.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await getLiveFixtures(40);
+        if (cancelled) return;
+        setFixtures(rows);
+        setStatus(rows.length > 0 ? 'live' : 'empty');
+      } catch {
+        if (cancelled) return;
+        setFixtures([]);
+        setStatus('empty');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const colourFor = (r) => r === 'W' ? '#2a9d8f' : r === 'L' ? 'var(--accent)' : '#e9c46a';
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
@@ -1727,7 +1795,7 @@ const FixturesPage = () => {
         <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 64px 28px', zIndex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
             <div style={{ width: 3, height: 18, background: 'var(--accent)', flexShrink: 0 }} />
-            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'var(--accent)', textTransform: 'uppercase' }}>2025/26 Season</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'var(--accent)', textTransform: 'uppercase' }}>EA Sports FC 26 · League Matches</div>
           </div>
           <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 64, color: '#fff', textTransform: 'uppercase', lineHeight: 0.9, textShadow: '0 4px 24px rgba(0,0,0,0.6)' }}>FIXTURES & RESULTS</div>
           <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, fontWeight: 300, color: 'rgba(218,218,218,0.6)', marginTop: 8, fontStyle: 'italic' }}>Every weekend a different flavour of suffering.</div>
@@ -1735,46 +1803,69 @@ const FixturesPage = () => {
       </div>
       <RainbowBar />
       <div style={{ padding: '40px 64px 64px' }}>
-        {sortedFixtures.map((f) =>
-        <div key={f.id} style={{ background: 'rgba(10,22,40,0.7)', border: `1px solid ${f.result ? getCol(f) + '44' : 'rgba(0,200,255,0.15)'}`, borderRadius: 8, overflow: 'hidden', marginBottom: 10, cursor: f.result ? 'pointer' : 'default' }}
-        onClick={() => f.result && setExpanded(expanded === f.id ? null : f.id)}>
-          
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', borderLeft: `4px solid ${f.result ? getCol(f) : 'rgba(0,200,255,0.3)'}` }}>
-              {f.result ?
-            <div style={{ width: 34, height: 34, borderRadius: 4, background: getCol(f), display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', flexShrink: 0 }}>{getLabel(f)}</div> :
-            <div style={{ width: 34, height: 34, borderRadius: 4, background: 'rgba(0,200,255,0.1)', border: '1px solid rgba(0,200,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 9, color: '#00c8ff', flexShrink: 0 }}>TBC</div>
-            }
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                  <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', textTransform: 'uppercase' }}>{f.home ? 'HOME' : 'AWAY'} vs {f.opponent.toUpperCase()}</span>
-                  <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, color: 'rgba(218,218,218,0.35)', background: 'rgba(255,255,255,0.05)', padding: '2px 7px', borderRadius: 3, textTransform: 'uppercase' }}>{f.competition}</span>
-                </div>
-                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.4)' }}>{f.date} · {f.time}</div>
-              </div>
-              {f.result && <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 28, color: '#fff', letterSpacing: '0.05em' }}>{f.result.us} – {f.result.them}</div>}
-              {f.result && <div style={{ color: 'rgba(218,218,218,0.3)', fontSize: 12, marginLeft: 8 }}>{expanded === f.id ? '▲' : '▼'}</div>}
-            </div>
-            {expanded === f.id && f.result &&
-          <div style={{ padding: '0 20px 18px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                {f.motm &&
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(233,196,106,0.1)', border: '1px solid rgba(233,196,106,0.25)', borderRadius: 4, padding: '6px 14px', marginTop: 14, marginBottom: 12 }}>
-                    <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.15em', color: '#e9c46a', textTransform: 'uppercase' }}>★ MOTM</span>
-                    <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase' }}>{f.motm}</span>
-                  </div>
-            }
-                {f.scorers &&
-            <div style={{ marginBottom: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {f.scorers.map((s, i) => <TagChip key={i} label={`⚽ ${s}`} color="rgba(42,157,143,0.1)" textColor="#2a9d8f" />)}
-                  </div>
-            }
-                {f.narrative && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, fontStyle: 'italic', color: 'rgba(218,218,218,0.5)', lineHeight: 1.6, borderLeft: '2px solid rgba(228,0,43,0.3)', paddingLeft: 12 }}>{f.narrative}</div>}
-              </div>
-          }
+        {status === 'loading' && (
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)', textAlign: 'center', padding: '40px 0' }}>Loading match history…</div>
+        )}
+        {status === 'empty' && (
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)', textAlign: 'center', padding: '40px 0' }}>
+            No matches found yet. They'll appear here after the next scheduled scrape from EA.
           </div>
         )}
+        {fixtures.map((f) => {
+          const col = colourFor(f.result);
+          const aggUs  = f.ourClubAggregate || {};
+          const aggThem = f.oppClubAggregate || {};
+          return (
+            <div key={f.matchId} style={{ background: 'rgba(10,22,40,0.7)', border: `1px solid ${col}44`, borderRadius: 8, overflow: 'hidden', marginBottom: 10, cursor: 'pointer' }}
+              onClick={() => setExpanded(expanded === f.matchId ? null : f.matchId)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', borderLeft: `4px solid ${col}` }}>
+                <div style={{ width: 34, height: 34, borderRadius: 4, background: col, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', flexShrink: 0 }}>{f.result}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                    <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', textTransform: 'uppercase' }}>VS {(f.opponent || 'UNKNOWN').toUpperCase()}</span>
+                    <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, color: 'rgba(218,218,218,0.35)', background: 'rgba(255,255,255,0.05)', padding: '2px 7px', borderRadius: 3, textTransform: 'uppercase' }}>LEAGUE</span>
+                  </div>
+                  <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.4)' }}>{f.dateLabel || '—'}</div>
+                </div>
+                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 28, color: '#fff', letterSpacing: '0.05em' }}>{f.ourScore} – {f.theirScore}</div>
+                <div style={{ color: 'rgba(218,218,218,0.3)', fontSize: 12, marginLeft: 8 }}>{expanded === f.matchId ? '▲' : '▼'}</div>
+              </div>
+              {expanded === f.matchId && (
+                <div style={{ padding: '0 20px 18px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  {f.motm && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(233,196,106,0.1)', border: '1px solid rgba(233,196,106,0.25)', borderRadius: 4, padding: '6px 14px', marginTop: 14, marginBottom: 12 }}>
+                      <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.15em', color: '#e9c46a', textTransform: 'uppercase' }}>★ MOTM</span>
+                      <span style={{ fontFamily: 'Anton, sans-serif', fontSize: 14, color: '#fff', textTransform: 'uppercase' }}>{f.motm}</span>
+                    </div>
+                  )}
+                  {f.scorers && f.scorers.length > 0 && (
+                    <div style={{ marginBottom: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {f.scorers.map((s, i) =>
+                        <TagChip key={i} label={`⚽ ${s.name}${s.goals > 1 ? ' ×' + s.goals : ''}`} color="rgba(42,157,143,0.1)" textColor="#2a9d8f" />
+                      )}
+                    </div>
+                  )}
+                  {/* Match-aggregate stats from EA's payload — passes/shots/tackles for both sides */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginTop: 10 }}>
+                    {[
+                      { label: 'Shots',         us: aggUs.shots ?? '—',         them: aggThem.shots ?? '—' },
+                      { label: 'Passes',        us: aggUs.passesmade ?? '—',    them: aggThem.passesmade ?? '—' },
+                      { label: 'Tackles',       us: aggUs.tacklesmade ?? '—',   them: aggThem.tacklesmade ?? '—' },
+                      { label: 'Goals',         us: aggUs.goals ?? f.ourScore,  them: aggThem.goals ?? f.theirScore },
+                    ].map((s, i) => (
+                      <div key={i} style={{ background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 4, padding: '8px 10px', textAlign: 'center' }}>
+                        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>{s.label}</div>
+                        <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 16, color: '#fff', marginTop: 4 }}>{s.us} <span style={{ color: 'rgba(218,218,218,0.4)' }}>vs</span> {s.them}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>);
-
 };
 
 // ── NEWS PAGE ───────────────────────────────────────────────────
