@@ -67,6 +67,11 @@ create table if not exists public.invite_codes (
 -- the invite code. If invalid, raises an exception which causes the
 -- sign-up itself to fail, so we never end up with orphan auth.users
 -- rows that don't have a profile.
+--
+-- IMPORTANT ORDERING NOTE: invite_codes.used_by has a foreign key to
+-- profiles.id. We MUST insert the profile BEFORE marking the code
+-- consumed, otherwise the FK check fails and the whole sign-up rolls
+-- back with a generic "Database error saving new user" message.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -86,13 +91,26 @@ begin
   if v_display_name is null then
     raise exception 'Display name is required';
   end if;
-
   if v_invite_code is null then
     raise exception 'Invite code is required';
   end if;
 
-  -- Atomically consume: only succeeds if the code exists, hasn't been
-  -- used, and (if expiry set) hasn't expired.
+  -- Fast-fail on an obviously-bad code before we touch other tables.
+  if not exists (
+    select 1 from public.invite_codes
+    where code = v_invite_code
+      and used_at is null
+      and (expires_at is null or expires_at > now())
+  ) then
+    raise exception 'Invalid or already-used invite code';
+  end if;
+
+  -- Profile FIRST — it's the FK target for invite_codes.used_by below.
+  insert into public.profiles (id, display_name)
+  values (new.id, v_display_name);
+
+  -- Atomic consume — also covers the race where two users try the same
+  -- code between the existence check above and now.
   update public.invite_codes
   set used_at = now(), used_by = new.id
   where code = v_invite_code
@@ -101,11 +119,8 @@ begin
 
   get diagnostics v_consumed = row_count;
   if v_consumed = 0 then
-    raise exception 'Invalid or already-used invite code';
+    raise exception 'Invite code was just used by another sign-up';
   end if;
-
-  insert into public.profiles (id, display_name)
-  values (new.id, v_display_name);
 
   return new;
 end;
