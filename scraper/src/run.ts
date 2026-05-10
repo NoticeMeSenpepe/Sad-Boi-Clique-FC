@@ -141,9 +141,13 @@ async function ingestMembers(page: Page): Promise<{ ok: boolean; rowsWritten: nu
 
 async function ingestMatches(page: Page): Promise<{ ok: boolean; rowsWritten: number }> {
   // EA exposes both league matches and friendly/playoff types. We grab both.
+  // `maxResultCount=25` asks for 25 per type instead of EA's small default
+  // (typically 5), so the public Fixtures page builds up real history over
+  // time. Older matches are upserted by `match_id` so re-fetching the same
+  // 25 each run is cheap — only new IDs add rows.
   const [leagueMatches, playoffMatches] = await Promise.all([
-    fetchFromPage<Json>(page, `${API_HOST}/clubs/matches?clubIds=${CLUB_ID}&platform=${PLATFORM}&matchType=leagueMatch`),
-    fetchFromPage<Json>(page, `${API_HOST}/clubs/matches?clubIds=${CLUB_ID}&platform=${PLATFORM}&matchType=playoffMatch`),
+    fetchFromPage<Json>(page, `${API_HOST}/clubs/matches?clubIds=${CLUB_ID}&platform=${PLATFORM}&matchType=leagueMatch&maxResultCount=25`),
+    fetchFromPage<Json>(page, `${API_HOST}/clubs/matches?clubIds=${CLUB_ID}&platform=${PLATFORM}&matchType=playoffMatch&maxResultCount=25`),
   ]);
 
   const all = [

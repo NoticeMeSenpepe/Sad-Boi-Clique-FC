@@ -109,9 +109,18 @@ a, button, [role="button"] { cursor: none; }
   .sbc-hero-headline { font-size: clamp(28px, 9vw, 44px) !important; }
   .sbc-hero-mini { min-width: 0 !important; flex: 1 1 calc(50% - 6px) !important; }
 
-  /* Page headers shrink */
+  /* Page headers shrink. Most page-header titles use inline `fontSize: 60`
+     or `fontSize: 64` which would otherwise win against the class-based
+     rule below — the attribute selector + !important catches all of them
+     so titles like "NEWS & STORIES" / "FIXTURES & RESULTS" / "JOIN THE
+     CLIQUE" stop getting clipped under the nav bar. */
   .sbc-page-header { height: 180px !important; padding: 0 24px 20px !important; }
   .sbc-page-header-title { font-size: 38px !important; }
+  .sbc-page-header [style*="Anton"] { font-size: clamp(26px, 8vw, 40px) !important; line-height: 0.95 !important; }
+
+  /* Account page: Sign in / Create account stack vertically instead of
+     sitting in a cramped 2-column grid. */
+  .sbc-auth-grid { grid-template-columns: 1fr !important; padding: 32px 20px 64px !important; gap: 20px !important; }
 
   /* Generic page padding */
   .sbc-page-pad { padding-left: 20px !important; padding-right: 20px !important; }

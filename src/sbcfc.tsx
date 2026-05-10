@@ -1848,11 +1848,27 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
 // ── SQUAD PAGE ──────────────────────────────────────────────────
 const SquadPage = ({ setSelectedPlayer }) => {
   const [filter, setFilter] = React.useState('ALL');
+  const [search, setSearch] = React.useState('');
   const [hovered, setHovered] = React.useState(null);
   const players = useLivePlayers();   // human players carry their real EA stats here
   const positions = ['ALL', 'GK', 'DEF', 'MID', 'FWD'];
   const posMap = { GK: 'GK', CB: 'DEF', LB: 'DEF', RB: 'DEF', CDM: 'MID', CM: 'MID', CAM: 'MID', RW: 'FWD', LW: 'FWD', ST: 'FWD', CF: 'FWD' };
-  const filtered = filter === 'ALL' ? players : players.filter((p) => posMap[p.position] === filter);
+  // Search by name, short name, archetype, or shirt number. Case-insensitive
+  // substring match on text fields; exact-or-prefix match on number so "9"
+  // finds "9" without also matching "99". Empty query = no filtering.
+  const q = search.trim().toLowerCase();
+  const matchesSearch = (p) => {
+    if (!q) return true;
+    if (/^\d+$/.test(q)) return String(p.number ?? '').startsWith(q);
+    return (
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.shortName || '').toLowerCase().includes(q) ||
+      (p.archetype || '').toLowerCase().includes(q)
+    );
+  };
+  const filtered = players
+    .filter((p) => filter === 'ALL' || posMap[p.position] === filter)
+    .filter(matchesSearch);
 
   return (
     <div style={{ minHeight: '100vh', background: 'transparent' }}>
@@ -1873,8 +1889,9 @@ const SquadPage = ({ setSelectedPlayer }) => {
       </div>
       <RainbowBar />
 
-      {/* Filter bar */}
-      <div className="sbc-filter-bar" style={{ background: 'rgba(6,12,24,0.22)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(228,0,43,0.12)', display: 'flex', gap: 0, padding: '0 64px' }}>
+      {/* Filter bar — position pills on the left, search input on the right.
+          Wraps on narrow screens so neither half ever overlaps. */}
+      <div className="sbc-filter-bar" style={{ background: 'rgba(6,12,24,0.22)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(228,0,43,0.12)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0, padding: '0 64px' }}>
         {positions.map((pos) =>
         <button key={pos} onClick={() => setFilter(pos)} style={{
           background: 'none', border: 'none', borderBottom: filter === pos ? '3px solid var(--accent)' : '3px solid transparent',
@@ -1883,10 +1900,37 @@ const SquadPage = ({ setSelectedPlayer }) => {
           transition: 'all 0.2s', textTransform: 'uppercase'
         }}>{pos}</button>
         )}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.3)', letterSpacing: '0.08em' }}>
-          {filtered.length} PLAYERS
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
+          <div style={{ position: 'relative' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(218,218,218,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+            <input
+              type="search"
+              placeholder="Search by name or number"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff',
+                fontFamily: 'Roboto, sans-serif', fontSize: 12, letterSpacing: '0.04em',
+                padding: '8px 12px 8px 32px', borderRadius: 4, width: 240, outline: 'none',
+                transition: 'border-color 0.15s',
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; }}
+            />
+          </div>
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.3)', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
+            {filtered.length} PLAYER{filtered.length === 1 ? '' : 'S'}
+          </div>
         </div>
       </div>
+
+      {/* Empty state when search/filter yields nothing. */}
+      {filtered.length === 0 && (
+        <div className="sbc-page-pad" style={{ padding: '64px 64px', textAlign: 'center', fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.55)' }}>
+          No players match {q ? `"${search}"` : 'this filter'}.
+          <button onClick={() => { setSearch(''); setFilter('ALL'); }} style={{ display: 'inline-block', marginLeft: 12, background: 'none', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(218,218,218,0.85)', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 11, letterSpacing: '0.16em', padding: '6px 12px', borderRadius: 3, textTransform: 'uppercase' }}>Clear</button>
+        </div>
+      )}
 
       {/* Squad grid */}
       <div className="sbc-squad-grid sbc-page-pad" style={{ padding: '40px 64px 64px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 20 }}>
@@ -2489,6 +2533,10 @@ const FixturesPage = () => {
   const [expanded, setExpanded] = React.useState(null);
   const [fixtures, setFixtures] = React.useState([]);
   const [status, setStatus] = React.useState('loading'); // 'loading' | 'live' | 'empty'
+  // Show the 10 most-recent matches by default. Clicking "VIEW OLDER
+  // MATCHES" expands to the full list (whatever the scraper has stored).
+  const INITIAL_VISIBLE = 10;
+  const [showAll, setShowAll] = React.useState(false);
 
   // Pull live league match history from Supabase on mount. If the home page
   // (or anywhere else) stashed a focus matchId in localStorage, expand that
@@ -2545,7 +2593,7 @@ const FixturesPage = () => {
             No matches found yet. They'll appear here after the next scheduled scrape from EA.
           </div>
         )}
-        {fixtures.map((f) => {
+        {(showAll ? fixtures : fixtures.slice(0, INITIAL_VISIBLE)).map((f) => {
           const col = colourFor(f.result);
           return (
             <div key={f.matchId} style={{ background: 'rgba(10,22,40,0.7)', border: `1px solid ${col}44`, borderRadius: 8, overflow: 'hidden', marginBottom: 10 }}>
@@ -2566,6 +2614,28 @@ const FixturesPage = () => {
             </div>
           );
         })}
+        {/* View-older toggle. Only renders if there's anything beyond the
+            initial slice — once everything's visible the button hides. */}
+        {fixtures.length > INITIAL_VISIBLE && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 18 }}>
+            <button
+              onClick={() => setShowAll((v) => !v)}
+              style={{
+                background: showAll ? 'rgba(255,255,255,0.05)' : 'var(--accent)',
+                color: showAll ? 'rgba(218,218,218,0.85)' : '#fff',
+                border: showAll ? '1px solid rgba(255,255,255,0.15)' : 'none',
+                cursor: 'pointer',
+                fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.18em',
+                padding: '12px 28px', borderRadius: 4, textTransform: 'uppercase',
+                transition: 'all 0.2s',
+              }}
+            >
+              {showAll
+                ? `Show fewer matches ↑`
+                : `View older matches (${fixtures.length - INITIAL_VISIBLE} more) ↓`}
+            </button>
+          </div>
+        )}
       </div>
     </div>);
 };
@@ -3263,7 +3333,7 @@ const AccountPage = ({ setPage }) => {
       <div style={{ background: 'transparent', minHeight: '100vh' }}>
         <AccountPageHeader subtitle="Members Area" title="JOIN THE CLIQUE" />
         <RainbowBar />
-        <div className="sbc-page-pad" style={{ padding: '64px 64px 96px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, maxWidth: 980, margin: '0 auto' }}>
+        <div className="sbc-page-pad sbc-auth-grid" style={{ padding: '64px 64px 96px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, maxWidth: 980, margin: '0 auto' }}>
           {/* Sign in / forgot-password — same card, two modes. */}
           {forgotMode ? (
             <form onSubmit={handleSendReset} style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '32px 32px 28px' }}>
