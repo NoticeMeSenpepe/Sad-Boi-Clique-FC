@@ -3329,6 +3329,7 @@ const AdminNewsPanel = () => {
   const [err, setErr]         = React.useState(null);
   const [busy, setBusy]       = React.useState(false);
   const [editingId, setEditingId] = React.useState/* :null|'new'|number */(null);
+  const [uploading, setUploading] = React.useState(false);
   // Editor form state. `id` is null for new posts, the row id for edits.
   const blankForm = {
     headline: '', summary: '', body: '',
@@ -3338,6 +3339,27 @@ const AdminNewsPanel = () => {
     published_at: new Date().toISOString().slice(0, 16), // 'YYYY-MM-DDTHH:mm' for the input
   };
   const [form, setForm] = React.useState(blankForm);
+
+  /** Upload a file the admin chose to the `news-images` storage bucket
+   *  and put the resulting public URL into the form's image_url field. */
+  const onUploadImage = async (file) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setErr('Image is over 5 MB — please pick a smaller one.'); return; }
+    setUploading(true);
+    setErr(null);
+    try {
+      const sb = (await import('./supabase')).getSupabase();
+      // Sanitize filename and prefix with timestamp to avoid collisions.
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').toLowerCase();
+      const path = `${Date.now()}-${safe}`;
+      const { error: upErr } = await sb.storage.from('news-images').upload(path, file, { upsert: false, contentType: file.type });
+      if (upErr) { setErr(`Upload failed: ${upErr.message}`); return; }
+      const { data } = sb.storage.from('news-images').getPublicUrl(path);
+      setForm((f) => ({ ...f, image_url: data.publicUrl }));
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const fetchRows = React.useCallback(async () => {
     setLoading(true);
@@ -3486,8 +3508,15 @@ const AdminNewsPanel = () => {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
-          <Field label="Lead image (URL or /uploads/foo.png path)">
-            <input type="text" placeholder="/uploads/news-aurapulse.png" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} style={inputStyle} />
+          <Field label="Lead image">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="text" placeholder="Paste a URL/path, or click Upload →" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+              <label style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', cursor: uploading ? 'not-allowed' : 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', padding: '10px 14px', borderRadius: 4, textTransform: 'uppercase', whiteSpace: 'nowrap', opacity: uploading ? 0.5 : 1 }}>
+                {uploading ? 'Uploading…' : 'Upload'}
+                <input type="file" accept="image/*" disabled={uploading} onChange={(e) => { onUploadImage(e.target.files?.[0]); e.target.value = ''; }} style={{ display: 'none' }} />
+              </label>
+            </div>
+            {form.image_url && <div style={{ marginTop: 8 }}><img src={form.image_url} alt="" style={{ maxWidth: 220, maxHeight: 120, objectFit: 'cover', borderRadius: 4, border: '1px solid rgba(255,255,255,0.08)' }} onError={(e) => { (e.currentTarget).style.display = 'none'; }} /></div>}
           </Field>
           <Field label="Published at">
             <input type="datetime-local" value={form.published_at} onChange={(e) => setForm({ ...form, published_at: e.target.value })} style={inputStyle} />
