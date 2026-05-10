@@ -3418,18 +3418,18 @@ const AccountPage = ({ setPage }) => {
 
   // ── Signed in: full profile + parody tabs ──
   return (
-    <div style={{ background: 'transparent', minHeight: '100vh' }}>
-      <div className="sbc-page-header" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
+    <div className="sbc-account-page" style={{ background: 'transparent', minHeight: '100vh' }}>
+      <div className="sbc-page-header sbc-account-hero" style={{ position: 'relative', height: 240, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(228,0,43,0.25)' }}>
         <div style={{ position: 'absolute', inset: 0, backgroundImage: 'var(--page-header-image)', backgroundSize: 'cover', backgroundPosition: 'center 30%' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(3,8,16,0.55) 0%, rgba(3,8,16,0.85) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(3,8,16,0.85) 0%, transparent 50%)' }} />
-        <div style={{ position: 'absolute', left: 64, bottom: 32, display: 'flex', alignItems: 'flex-end', gap: 20 }}>
-          <div style={{ width: 96, height: 96, borderRadius: '50%', background: 'rgba(228,0,43,0.15)', border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 40, color: 'var(--accent)' }}>{initials}</div>
+        <div className="sbc-account-hero-content" style={{ position: 'absolute', left: 64, bottom: 32, display: 'flex', alignItems: 'flex-end', gap: 20 }}>
+          <div className="sbc-account-avatar" style={{ width: 96, height: 96, borderRadius: '50%', background: 'rgba(228,0,43,0.15)', border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Anton, sans-serif', fontSize: 40, color: 'var(--accent)' }}>{initials}</div>
           <div>
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: 'var(--accent)', marginBottom: 6, textTransform: 'uppercase' }}>
               Member since {memberSinceLabel(profile.created_at)}{profile.is_admin ? ' · Admin' : ''}
             </div>
-            <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 56, color: '#fff', lineHeight: 0.9, textTransform: 'uppercase', textShadow: '0 4px 40px rgba(0,0,0,0.6)' }}>{profile.display_name}</div>
+            <div className="sbc-account-displayname" style={{ fontFamily: 'Anton, sans-serif', fontSize: 56, color: '#fff', lineHeight: 0.9, textTransform: 'uppercase', textShadow: '0 4px 40px rgba(0,0,0,0.6)' }}>{profile.display_name}</div>
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, fontWeight: 300, color: 'rgba(218,218,218,0.6)', marginTop: 6, fontStyle: 'italic' }}>"Welcome back, manager."</div>
           </div>
         </div>
@@ -3610,12 +3610,12 @@ const AdminPage = ({ setPage }) => {
   ];
 
   return (
-    <div style={{ background: 'transparent', minHeight: '100vh' }}>
+    <div className="sbc-admin-page" style={{ background: 'transparent', minHeight: '100vh' }}>
       <AccountPageHeader subtitle={`Signed in as ${auth.profile.display_name}`} title="ADMIN" />
       <RainbowBar />
       <div className="sbc-page-pad" style={{ padding: '32px 64px 96px', maxWidth: 1100, margin: '0 auto' }}>
         {/* Tab strip */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: 24, background: 'rgba(8,15,30,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, overflow: 'hidden', flexWrap: 'wrap' }}>
+        <div className="sbc-admin-tabs" style={{ display: 'flex', gap: 0, marginBottom: 24, background: 'rgba(8,15,30,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, overflow: 'hidden', flexWrap: 'wrap' }}>
           {tabs.map((t, i) => (
             <button key={t.id} onClick={() => setTab(t.id)}
               style={{

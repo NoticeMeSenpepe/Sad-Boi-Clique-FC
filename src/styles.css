@@ -122,6 +122,29 @@ a, button, [role="button"] { cursor: none; }
      sitting in a cramped 2-column grid. */
   .sbc-auth-grid { grid-template-columns: 1fr !important; padding: 32px 20px 64px !important; gap: 20px !important; }
 
+  /* Signed-in account hero: shrink the avatar and member name so the
+     whole row fits on a phone instead of getting cut off by the right
+     edge. The hero band and the EXIT/burger area share that header
+     space, so be aggressive about the sizing. */
+  .sbc-account-hero-content { left: 20px !important; right: 20px !important; bottom: 20px !important; gap: 12px !important; }
+  .sbc-account-avatar { width: 56px !important; height: 56px !important; font-size: 22px !important; }
+  .sbc-account-displayname { font-size: clamp(24px, 8vw, 36px) !important; }
+
+  /* Account page (signed in) and Admin page: collapse every explicit-
+     column grid down to a single column so forms, 2-up panels, AND the
+     admin list rows all stack naturally on phones. List rows lose their
+     desktop horizontal layout but each row's fields cascade vertically,
+     which reads fine on a phone. We deliberately exclude the auto-fill
+     / repeat() patterns (e.g. squad/news/store public grids) — those
+     are already responsive and would break if forced to 1fr. */
+  .sbc-account-page [style*="grid-template-columns"]:not([style*="repeat("]):not([style*="auto-fill"]):not([style*="auto-fit"]),
+  .sbc-admin-page   [style*="grid-template-columns"]:not([style*="repeat("]):not([style*="auto-fill"]):not([style*="auto-fit"]) {
+    grid-template-columns: 1fr !important;
+  }
+  /* Admin tab strip — wrap and shrink padding so the 5 tabs fit on
+     two rows of a phone instead of overflowing horizontally. */
+  .sbc-admin-page .sbc-admin-tabs button { flex: 1 1 50% !important; padding: 10px 8px !important; font-size: 11px !important; }
+
   /* Generic page padding */
   .sbc-page-pad { padding-left: 20px !important; padding-right: 20px !important; }
 
