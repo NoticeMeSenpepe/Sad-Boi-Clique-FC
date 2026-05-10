@@ -7,7 +7,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 // @ts-nocheck
 import React from 'react';
-import { getPulseStats, getLiveFixtures, getLiveMembersByEaUser, type LiveMemberStats } from './liveData';
+import { getPulseStats, getLiveFixtures, getLiveMembersByEaUser, getLiveNews, type LiveMemberStats } from './liveData';
 import { useAuth } from './auth';
 
 /**
@@ -65,6 +65,72 @@ function useLivePlayers(): any[] {
     return () => { cancelled = true; };
   }, []);
   return players;
+}
+
+/** Convert an ISO timestamp into a "12 minutes ago" / "3 days ago" style
+ *  string, matching the prototype's existing time strings. */
+function relativeTime(iso: string): string {
+  const now = Date.now();
+  const t   = new Date(iso).getTime();
+  const diff = Math.max(0, now - t);
+  const min = Math.floor(diff / 60000);
+  if (min < 1)   return 'Just now';
+  if (min < 60)  return `${min} minute${min === 1 ? '' : 's'} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24)   return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+  const d = Math.floor(hr / 24);
+  if (d < 7)     return `${d} day${d === 1 ? '' : 's'} ago`;
+  const w = Math.floor(d / 7);
+  if (w < 4)     return `${w} week${w === 1 ? '' : 's'} ago`;
+  const mo = Math.floor(d / 30);
+  if (mo < 12)   return `${mo} month${mo === 1 ? '' : 's'} ago`;
+  const y = Math.floor(d / 365);
+  return `${y} year${y === 1 ? '' : 's'} ago`;
+}
+
+/** Module-level invalidation flag for live news. Admin CRUD bumps it so
+ *  the next mount of a news-consuming page refetches instead of returning
+ *  the same in-memory copy. */
+let _liveNewsRefreshKey = 0;
+function invalidateLiveNews() { _liveNewsRefreshKey += 1; }
+
+/** Hook: returns the news article list. Falls back to the prototype's
+ *  curated SORTED_NEWS / ALL_NEWS if the database has no rows yet, so
+ *  the site looks alive even before any admin posts.
+ *  When admins are inviting friends to read the site, the DB is the
+ *  source of truth — once any row exists in news_articles, the mock
+ *  list is fully replaced. */
+function useLiveNews(): any[] {
+  const fallback = ALL_NEWS;
+  const [items, setItems] = React.useState<any[]>(fallback);
+  const refreshKey = _liveNewsRefreshKey;
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const live = await getLiveNews();
+      if (cancelled) return;
+      if (live.length === 0) { setItems(fallback); return; }
+      // Translate the live row shape into the same property names the
+      // existing render code already uses (`image`, `tagColor`, `time`).
+      setItems(live.map((a) => ({
+        id:        a.id,
+        headline:  a.headline,
+        summary:   a.summary,
+        body:      a.body,
+        tag:       a.tag,
+        tagColor:  a.tagColor,
+        kicker:    a.kicker ?? undefined,
+        image:     a.imageUrl ?? undefined,
+        time:      relativeTime(a.publishedAt),
+        hot:       a.hot,
+        author:    a.author ?? undefined,
+        publishedAt: a.publishedAt,
+      })));
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+  return items;
 }
 
 /** "1st" / "2nd" / "3rd" / "4th"… for league-position display. */
@@ -979,6 +1045,7 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
   const [headlineIdx, setHeadlineIdx] = React.useState(0);
   const [pulseValues, setPulseValues] = React.useState({ pos: 0, rate: 0, gd: 0, pts: 0, matches: 0, skill: 0 });
   const players = useLivePlayers();
+  const news = useLiveNews();
 
   // Live fixtures: fetched once. All match-related panels on the home page
   // (LAST RESULT mini-card, CURRENT FORM, the LAST MATCH detail panel,
@@ -1004,7 +1071,7 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
   const lastMatchColor = (r) => r === 'W' ? '#2a9d8f' : r === 'L' ? 'var(--accent)' : '#e9c46a';
 
   // Headlines mirror the news page order: lead first, then by date. Click jumps straight to that story.
-  const headlines = SORTED_NEWS.slice(0, 4).map((n) => ({
+  const headlines = news.slice(0, 4).map((n) => ({
     id: n.id,
     text: (n.headline || '').toUpperCase(),
     sub: n.summary || '',
@@ -1487,7 +1554,7 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, color: 'rgba(218,218,218,0.3)', marginTop: 10, letterSpacing: '0.05em' }}>2 HOURS AGO</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {SORTED_NEWS.slice(1, 5).map((item) =>
+            {news.slice(1, 5).map((item) =>
             <div key={item.id} onClick={() => setPage('news')} style={{ background: 'rgba(10,22,40,0.6)', border: '1px solid rgba(30,60,120,0.3)', borderRadius: 6, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.2s' }}
             onMouseEnter={(e) => {e.currentTarget.style.borderColor = 'rgba(228,0,43,0.35)';e.currentTarget.style.background = 'rgba(228,0,43,0.05)';}}
             onMouseLeave={(e) => {e.currentTarget.style.borderColor = 'rgba(30,60,120,0.3)';e.currentTarget.style.background = 'rgba(10,22,40,0.6)';}}>
@@ -2152,11 +2219,12 @@ const NewsPage = () => {
   const [active, setActive] = React.useState(null);
   const [articleId, setArticleId] = React.useState(null);
   const [archive, setArchive] = React.useState(false);
+  const news = useLiveNews();
   // Pick up homepage-headline focus on mount
   React.useEffect(() => {
     let id = null;
     try { id = localStorage.getItem('sbc_focus_news'); localStorage.removeItem('sbc_focus_news'); } catch (e) {}
-    if (id) setArticleId(parseInt(id, 10));
+    if (id) setArticleId(id); // keep as raw string; we compare with String(n.id) below
   }, []);
   // Only scroll when transitioning between index <-> article (skip initial null mount)
   const prevArticleId = React.useRef(null);
@@ -2170,7 +2238,7 @@ const NewsPage = () => {
   }, [articleId]);
 
   if (articleId !== null) {
-    const article = ALL_NEWS.find(n => n.id === articleId);
+    const article = news.find((n) => String(n.id) === String(articleId));
     if (article) return <NewsArticleView article={article} onBack={() => setArticleId(null)} />;
   }
 
@@ -2194,7 +2262,8 @@ const NewsPage = () => {
       <RainbowBar />
       <div className="sbc-news-mosaic sbc-page-pad" style={{ padding: '32px 64px 64px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         {(() => {
-          const lead = SORTED_NEWS[0];
+          const lead = news[0];
+          if (!lead) return null;
           return (
             <div key={lead.id} onClick={() => setArticleId(lead.id)} className="sbc-news-lead sbc-glow-panel" style={{
               '--panel-color': lead.tagColor,
@@ -2236,7 +2305,7 @@ const NewsPage = () => {
 
         })()}
 
-        {SORTED_NEWS.slice(1).map((item) => {
+        {news.slice(1).map((item) => {
           const isOpen = active === item.id;
           return (
             <div key={item.id} onClick={() => setArticleId(item.id)} className="sbc-news-tile sbc-glow-panel"
@@ -2305,8 +2374,9 @@ const NewsPage = () => {
 const NewsArchiveView = ({ onBack, onOpen }) => {
   const [filter, setFilter] = React.useState('ALL');
   React.useEffect(() => { window.scrollTo(0, 0); }, []);
-  const tags = ['ALL', ...Array.from(new Set(ALL_NEWS.map(n => n.tag)))];
-  const items = filter === 'ALL' ? ALL_NEWS : ALL_NEWS.filter(n => n.tag === filter);
+  const news = useLiveNews();
+  const tags = ['ALL', ...Array.from(new Set(news.map((n) => n.tag)))];
+  const items = filter === 'ALL' ? news : news.filter((n) => n.tag === filter);
   return (
     <div style={{ background: 'transparent', minHeight: '100vh' }}>
       <div className="sbc-page-header" style={{ position: 'relative', height: 220, marginTop: 92, overflow: 'hidden', borderBottom: '1px solid rgba(155,93,229,0.3)' }}>
@@ -2318,7 +2388,7 @@ const NewsArchiveView = ({ onBack, onOpen }) => {
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', color: '#9b5de5', textTransform: 'uppercase' }}>From The Archive</div>
           </div>
           <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 64, color: '#fff', textTransform: 'uppercase', lineHeight: 0.9, textShadow: '0 4px 24px rgba(0,0,0,0.6)' }}>STORY ARCHIVE</div>
-          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, fontWeight: 300, color: 'rgba(218,218,218,0.6)', marginTop: 8, fontStyle: 'italic' }}>Every chapter of the saga, in one place. {ALL_NEWS.length} stories.</div>
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, fontWeight: 300, color: 'rgba(218,218,218,0.6)', marginTop: 8, fontStyle: 'italic' }}>Every chapter of the saga, in one place. {news.length} stories.</div>
         </div>
       </div>
       <RainbowBar />
@@ -3042,7 +3112,7 @@ const AdminPage = ({ setPage }) => {
 
   const tabs = [
     { id: 'invites',   label: 'Invite Codes',  ready: true  },
-    { id: 'news',      label: 'News Articles', ready: false },
+    { id: 'news',      label: 'News Articles', ready: true  },
     { id: 'transfers', label: 'Transfers',     ready: false },
     { id: 'store',     label: 'Store Items',   ready: false },
     { id: 'players',   label: 'Player Lore',   ready: false },
@@ -3072,11 +3142,11 @@ const AdminPage = ({ setPage }) => {
         </div>
 
         {tab === 'invites' && <AdminInvitesPanel />}
-        {tab !== 'invites' && (
+        {tab === 'news'    && <AdminNewsPanel />}
+        {tab !== 'invites' && tab !== 'news' && (
           <div style={{ background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '40px 28px', textAlign: 'center' }}>
             <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 8 }}>Coming soon</div>
             <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.7)', lineHeight: 1.6, maxWidth: 560, margin: '0 auto' }}>
-              {tab === 'news'      && 'Post, edit and delete front-page news stories. Each post: headline, tag, summary, body, lead image, timestamp.'}
               {tab === 'transfers' && 'Register fictional signings / departures / loans. Each entry: player, type, fee, narrative.'}
               {tab === 'store'     && 'Manage the merch catalogue — name, price, sizes, photos, sold-out flag, optional tag.'}
               {tab === 'players'   && 'Edit the static parts of player profiles — archetype, lore, tags, accent colour, kit number. Live stats from EA stay untouched.'}
@@ -3247,6 +3317,250 @@ const AdminInvitesPanel = () => {
     </div>
   );
 };
+
+// ── ADMIN: News Articles panel ──────────────────────────────────
+// List, create, edit, delete entries in news_articles. Anyone with
+// is_admin = true on their profile can use this; RLS on the table
+// is the actual gate.
+const AdminNewsPanel = () => {
+  const auth = useAuth();
+  const [rows, setRows]       = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr]         = React.useState(null);
+  const [busy, setBusy]       = React.useState(false);
+  const [editingId, setEditingId] = React.useState/* :null|'new'|number */(null);
+  // Editor form state. `id` is null for new posts, the row id for edits.
+  const blankForm = {
+    headline: '', summary: '', body: '',
+    tag: 'BREAKING', tag_color: '#E4002B',
+    kicker: '', image_url: '', author: '',
+    hot: false,
+    published_at: new Date().toISOString().slice(0, 16), // 'YYYY-MM-DDTHH:mm' for the input
+  };
+  const [form, setForm] = React.useState(blankForm);
+
+  const fetchRows = React.useCallback(async () => {
+    setLoading(true);
+    const sb = (await import('./supabase')).getSupabase();
+    if (!sb) { setErr('No backend connection.'); setLoading(false); return; }
+    const { data, error } = await sb
+      .from('news_articles')
+      .select('id, published_at, created_at, headline, summary, body, tag, tag_color, kicker, image_url, author, hot')
+      .order('published_at', { ascending: false });
+    if (error) setErr(error.message);
+    setRows(data || []);
+    setLoading(false);
+  }, []);
+
+  React.useEffect(() => { fetchRows(); }, [fetchRows]);
+
+  const openNew = () => {
+    setForm({ ...blankForm, published_at: new Date().toISOString().slice(0, 16) });
+    setEditingId('new');
+    setErr(null);
+  };
+
+  const openEdit = (row) => {
+    setForm({
+      headline: row.headline ?? '',
+      summary:  row.summary  ?? '',
+      body:     row.body     ?? '',
+      tag:      row.tag      ?? 'NEWS',
+      tag_color:row.tag_color ?? '#E4002B',
+      kicker:   row.kicker   ?? '',
+      image_url:row.image_url ?? '',
+      author:   row.author   ?? '',
+      hot:      Boolean(row.hot),
+      published_at: row.published_at ? new Date(row.published_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
+    });
+    setEditingId(row.id);
+    setErr(null);
+  };
+
+  const cancelEdit = () => { setEditingId(null); setErr(null); };
+
+  const save = async () => {
+    setErr(null);
+    if (!form.headline.trim()) { setErr('Headline is required.'); return; }
+    setBusy(true);
+    const sb = (await import('./supabase')).getSupabase();
+    const payload = {
+      headline:    form.headline.trim(),
+      summary:     form.summary.trim(),
+      body:        form.body,
+      tag:         form.tag.trim() || 'NEWS',
+      tag_color:   form.tag_color.trim() || '#E4002B',
+      kicker:      form.kicker.trim() || null,
+      image_url:   form.image_url.trim() || null,
+      author:      form.author.trim() || null,
+      hot:         form.hot,
+      published_at: new Date(form.published_at).toISOString(),
+    };
+    let error;
+    if (editingId === 'new') {
+      ({ error } = await sb.from('news_articles').insert({ ...payload, created_by: auth.user?.id ?? null }));
+    } else {
+      ({ error } = await sb.from('news_articles').update(payload).eq('id', editingId));
+    }
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    invalidateLiveNews();
+    setEditingId(null);
+    fetchRows();
+  };
+
+  const remove = async (row) => {
+    if (!confirm(`Delete "${row.headline}"? This can't be undone.`)) return;
+    const sb = (await import('./supabase')).getSupabase();
+    const { error } = await sb.from('news_articles').delete().eq('id', row.id);
+    if (error) { setErr(error.message); return; }
+    invalidateLiveNews();
+    fetchRows();
+  };
+
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  };
+
+  // Preset tag/colour combos that mirror the prototype's existing palette.
+  const tagPresets = [
+    { tag: 'BREAKING',     color: '#E4002B' },
+    { tag: 'MATCH REPORT', color: '#9b5de5' },
+    { tag: 'ANALYSIS',     color: '#e9c46a' },
+    { tag: 'TRANSFER',     color: '#2a9d8f' },
+    { tag: 'EXCLUSIVE',    color: '#ff2244' },
+    { tag: 'CULTURE',      color: '#9b5de5' },
+    { tag: 'POST-MATCH',   color: '#f4a261' },
+    { tag: 'LORE',         color: '#f4a261' },
+    { tag: 'ONGOING',      color: '#00c8ff' },
+    { tag: 'NEWS',         color: '#E4002B' },
+  ];
+
+  // ── EDITOR ──────────────────────────────────────────────────────
+  if (editingId !== null) {
+    return (
+      <div style={{ display: 'grid', gap: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{editingId === 'new' ? 'New article' : 'Edit article'}</div>
+          <button onClick={cancelEdit} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(218,218,218,0.65)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '8px 14px', borderRadius: 4, textTransform: 'uppercase' }}>← Back to list</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Field label="Headline" required>
+            <input type="text" value={form.headline} onChange={(e) => setForm({ ...form, headline: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Kicker (optional)">
+            <input type="text" placeholder='e.g. "Exclusive Investigation"' value={form.kicker} onChange={(e) => setForm({ ...form, kicker: e.target.value })} style={inputStyle} />
+          </Field>
+        </div>
+
+        <Field label="Summary (one-line preview text shown on cards)">
+          <textarea rows={2} value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} style={{ ...inputStyle, fontFamily: 'Roboto, sans-serif', resize: 'vertical' }} />
+        </Field>
+
+        <Field label="Body (full article text — line breaks become paragraphs)">
+          <textarea rows={10} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} style={{ ...inputStyle, fontFamily: 'Roboto, sans-serif', resize: 'vertical', lineHeight: 1.55 }} />
+        </Field>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+          <Field label="Tag">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="text" value={form.tag} onChange={(e) => setForm({ ...form, tag: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+              <select onChange={(e) => { const p = tagPresets[+e.target.value]; if (p) setForm({ ...form, tag: p.tag, tag_color: p.color }); e.target.selectedIndex = 0; }} style={{ ...inputStyle, width: 36, padding: '0 6px', cursor: 'pointer' }}>
+                <option value="">▼</option>
+                {tagPresets.map((p, i) => <option key={p.tag} value={i}>{p.tag}</option>)}
+              </select>
+            </div>
+          </Field>
+          <Field label="Tag colour">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="color" value={form.tag_color} onChange={(e) => setForm({ ...form, tag_color: e.target.value })} style={{ width: 38, height: 38, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: 0, background: 'transparent', cursor: 'pointer' }} />
+              <input type="text" value={form.tag_color} onChange={(e) => setForm({ ...form, tag_color: e.target.value })} style={{ ...inputStyle, flex: 1, fontFamily: 'Roboto Mono, ui-monospace, monospace' }} />
+            </div>
+          </Field>
+          <Field label="Author (optional byline)">
+            <input type="text" placeholder='e.g. "Club Insider"' value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} style={inputStyle} />
+          </Field>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
+          <Field label="Lead image (URL or /uploads/foo.png path)">
+            <input type="text" placeholder="/uploads/news-aurapulse.png" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Published at">
+            <input type="datetime-local" value={form.published_at} onChange={(e) => setForm({ ...form, published_at: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label=" ">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 0', cursor: 'pointer' }}>
+              <input type="checkbox" checked={form.hot} onChange={(e) => setForm({ ...form, hot: e.target.checked })} />
+              <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: '#fff', letterSpacing: '0.05em' }}>🔥 Mark as HOT (trending)</span>
+            </label>
+          </Field>
+        </div>
+
+        {err && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)' }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={cancelEdit} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(218,218,218,0.65)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', padding: '10px 16px', borderRadius: 4, textTransform: 'uppercase' }}>Cancel</button>
+          <button onClick={save} disabled={busy || !form.headline.trim()}
+                  style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.16em', padding: '10px 18px', borderRadius: 4, textTransform: 'uppercase', whiteSpace: 'nowrap', opacity: (busy || !form.headline.trim()) ? 0.5 : 1 }}>
+            {busy ? '…' : (editingId === 'new' ? 'Publish →' : 'Save changes →')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── LIST ────────────────────────────────────────────────────────
+  return (
+    <div style={{ display: 'grid', gap: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.6)' }}>{rows.length} article{rows.length === 1 ? '' : 's'} in the database.</div>
+        <button onClick={openNew} style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.16em', padding: '10px 18px', borderRadius: 4, textTransform: 'uppercase' }}>+ New article</button>
+      </div>
+
+      {err && <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'var(--accent)' }}>{err}</div>}
+
+      <div style={{ background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '0.7fr 2.5fr 0.9fr 1.2fr 0.7fr', alignItems: 'center', padding: '10px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}>
+          {['Tag','Headline','Hot?','Published','Actions'].map((h, i) => (
+            <div key={i} style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>{h}</div>
+          ))}
+        </div>
+        {loading && <div style={{ padding: 20, fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>Loading…</div>}
+        {!loading && rows.length === 0 && (
+          <div style={{ padding: 20, fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.5)' }}>No articles yet. The site is currently showing the prototype's sample articles. Click "+ New article" to publish your first real one.</div>
+        )}
+        {rows.map((r, i) => (
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '0.7fr 2.5fr 0.9fr 1.2fr 0.7fr', alignItems: 'center', padding: '12px 18px', borderBottom: i < rows.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+            <div>
+              <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.15em', color: '#fff', background: r.tag_color || 'var(--accent)', padding: '3px 8px', borderRadius: 2, textTransform: 'uppercase' }}>{r.tag || 'NEWS'}</span>
+            </div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.headline}</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: r.hot ? '#e9c46a' : 'rgba(218,218,218,0.4)' }}>{r.hot ? '🔥 HOT' : '—'}</div>
+            <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 11, color: 'rgba(218,218,218,0.65)' }}>{fmtDate(r.published_at)}</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => openEdit(r)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(218,218,218,0.8)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>Edit</button>
+              <button onClick={() => remove(r)} style={{ background: 'transparent', border: '1px solid rgba(228,0,43,0.4)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', padding: '5px 10px', borderRadius: 3, textTransform: 'uppercase' }}>Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const inputStyle = { width: '100%', background: 'rgba(8,15,30,0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, padding: '10px 12px', color: '#fff', fontFamily: 'Roboto, sans-serif', fontSize: 13, boxSizing: 'border-box' };
+
+const Field = ({ label, required, children }) => (
+  <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <span style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: 'rgba(218,218,218,0.5)', textTransform: 'uppercase' }}>
+      {label}{required && <span style={{ color: 'var(--accent)', marginLeft: 4 }}>*</span>}
+    </span>
+    {children}
+  </label>
+);
 
 
 // ── BASKET PAGE ─────────────────────────────────────────────────

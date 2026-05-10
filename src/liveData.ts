@@ -516,6 +516,49 @@ export async function getLiveFixtures(limit = 30): Promise<FixtureRow[]> {
   });
 }
 
+// ── News articles (admin-managed) ────────────────────────────────────
+
+export interface NewsArticle {
+  id: number | string;
+  publishedAt: string;
+  headline: string;
+  summary: string;
+  body: string;
+  tag: string;
+  tagColor: string;
+  kicker: string | null;
+  imageUrl: string | null;
+  author: string | null;
+  hot: boolean;
+}
+
+/** Returns all published news articles, newest first. Empty array if no
+ *  rows exist yet — callers should fall back to the prototype's
+ *  hard-coded mock list in that case. */
+export async function getLiveNews(): Promise<NewsArticle[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from('news_articles')
+    .select('id, published_at, headline, summary, body, tag, tag_color, kicker, image_url, author, hot')
+    .lte('published_at', new Date().toISOString())   // hide future-scheduled posts
+    .order('published_at', { ascending: false });
+  if (error || !data) return [];
+  return data.map((r): NewsArticle => ({
+    id: r.id as number,
+    publishedAt: r.published_at as string,
+    headline: r.headline as string,
+    summary: (r.summary as string) ?? '',
+    body: (r.body as string) ?? '',
+    tag: (r.tag as string) || 'NEWS',
+    tagColor: (r.tag_color as string) || '#E4002B',
+    kicker: (r.kicker as string | null) ?? null,
+    imageUrl: (r.image_url as string | null) ?? null,
+    author: (r.author as string | null) ?? null,
+    hot: Boolean(r.hot),
+  }));
+}
+
 /** Latest scrape run timestamp + status, for an "as of …" footer. */
 export async function getScraperHealth(): Promise<{ ranAt: string; ok: boolean } | null> {
   const sb = getSupabase();
