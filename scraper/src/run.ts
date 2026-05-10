@@ -216,15 +216,33 @@ async function main() {
   let runOk = true;
 
   try {
+    // EA's CDN (Akamai) TLS-fingerprints clients and rejects Playwright's
+    // bundled Chromium with ERR_HTTP2_PROTOCOL_ERROR. Using `channel: 'chrome'`
+    // launches the real Google Chrome that's pre-installed on the runner —
+    // its TLS fingerprint matches a normal user's browser and the request
+    // sails through.
     const browser = await chromium.launch({
+      channel: 'chrome',
       headless: true,
-      args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+      args: [
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-blink-features=AutomationControlled',
+      ],
     });
     context = await browser.newContext({
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
       locale: 'en-US',
       viewport: { width: 1280, height: 800 },
+      extraHTTPHeaders: {
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    // Strip the navigator.webdriver flag that Playwright sets by default —
+    // some bot detectors check it.
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     });
     const page = await context.newPage();
 
