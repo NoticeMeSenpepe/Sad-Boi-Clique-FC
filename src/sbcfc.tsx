@@ -334,7 +334,9 @@ const LEAGUE_TABLE = [
 // ── NavBar ─────────────────────────────────────────────────────
 const NavBar = ({ page, setPage }) => {
   const [mobileOpen, setMobileOpen] = React.useState(false);
-  const navItems = [
+  const auth = useAuth();
+  // Admin link is appended only when the signed-in user has is_admin = true.
+  const baseNavItems = [
   { id: 'home', label: 'HOME' },
   { id: 'news', label: 'NEWS' },
   { id: 'squad', label: 'SQUAD' },
@@ -344,9 +346,13 @@ const NavBar = ({ page, setPage }) => {
   // 'league' (the parody Premier-League-style table) removed at user request —
   // no real-world table exists for an EA Pro Clubs custom club. The page
   // component still exists but is unreachable through the main nav.
-  { id: 'store', label: 'STORE' },
-  { id: 'account', label: '' },
-  { id: 'basket', label: 'BASKET' }];
+  { id: 'store', label: 'STORE' }];
+  const navItems = [
+    ...baseNavItems,
+    ...(auth.profile?.is_admin ? [{ id: 'admin', label: 'ADMIN' }] : []),
+    { id: 'account', label: '' },
+    { id: 'basket',  label: 'BASKET' },
+  ];
 
   const handleNav = (id) => {setPage(id);setMobileOpen(false);};
   return (
@@ -2839,6 +2845,115 @@ const AccountPageHeader = ({ subtitle, title }) => (
 );
 
 
+// ── ADMIN PAGE ──────────────────────────────────────────────────
+// Phase 4B: empty frame, gated to admin users only. Phase 4C will
+// fill the inner cards with real CRUD UI for invite codes / news /
+// store / transfers / player lore.
+const AdminPage = ({ setPage }) => {
+  const auth = useAuth();
+
+  // Defence-in-depth gate. Even if a non-admin somehow lands on this
+  // page (stale state, shared URL, etc.) we refuse to render the panel.
+  if (auth.loading) {
+    return (
+      <div style={{ background: 'transparent', minHeight: '100vh' }}>
+        <AccountPageHeader subtitle="Loading…" title="ADMIN" />
+        <RainbowBar />
+        <div style={{ padding: 64, textAlign: 'center', color: 'rgba(218,218,218,0.5)', fontFamily: 'Roboto, sans-serif', fontSize: 13 }}>Checking your permissions…</div>
+      </div>
+    );
+  }
+  if (!auth.user || !auth.profile?.is_admin) {
+    return (
+      <div style={{ background: 'transparent', minHeight: '100vh' }}>
+        <AccountPageHeader subtitle="Restricted" title="ADMIN ONLY" />
+        <RainbowBar />
+        <div style={{ padding: '64px 64px 96px', maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 14, color: 'rgba(218,218,218,0.7)', lineHeight: 1.6, marginBottom: 22 }}>
+            This page is only available to admin accounts. {auth.user ? 'Sign in with an admin account to continue.' : 'Sign in to continue.'}
+          </div>
+          <button onClick={() => setPage('account')} style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Anton, sans-serif', fontSize: 13, letterSpacing: '0.18em', padding: '12px 22px', borderRadius: 4, textTransform: 'uppercase' }}>Go to Account</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Five sections that 4C will populate. Each card has a stub body
+  // describing what it will become — keeps the layout from looking
+  // empty while we wait to land the real CRUD UI.
+  const sections = [
+    {
+      title: 'Invite Codes',
+      blurb: 'Generate one-use codes for friends to sign up with. Replaces the SQL workflow we used for your bootstrap code.',
+      eta: 'Next up in 4C',
+      color: 'var(--accent)',
+    },
+    {
+      title: 'News Articles',
+      blurb: 'Add, edit and remove the front-page news stories. Each post has a headline, summary, body, lead image, tag (e.g. BREAKING / TRANSFER), and timestamp.',
+      eta: 'Phase 4C',
+      color: '#9b5de5',
+    },
+    {
+      title: 'Transfers',
+      blurb: 'Manage the running list of fictional transfers (signings / departures / loans). Each entry has a player, type, fee, narrative.',
+      eta: 'Phase 4C',
+      color: '#f4a261',
+    },
+    {
+      title: 'Store Items',
+      blurb: 'Manage the merch catalogue — name, price, sizes, photos, sold-out flag, optional tag (e.g. NEW DROP, LIMITED).',
+      eta: 'Phase 4C',
+      color: '#2a9d8f',
+    },
+    {
+      title: 'Player Lore',
+      blurb: 'Edit the static parts of every player profile — archetype, lore, tags, accent colour, kit number. Live stats from EA stay untouched.',
+      eta: 'Phase 4C',
+      color: '#00c8ff',
+    },
+  ];
+
+  return (
+    <div style={{ background: 'transparent', minHeight: '100vh' }}>
+      <AccountPageHeader subtitle={`Signed in as ${auth.profile.display_name}`} title="ADMIN" />
+      <RainbowBar />
+      <div className="sbc-page-pad" style={{ padding: '40px 64px 96px', maxWidth: 1100, margin: '0 auto' }}>
+        <div style={{ background: 'rgba(10,22,40,0.7)', border: '1px solid rgba(228,0,43,0.25)', borderRadius: 8, padding: '24px 28px', marginBottom: 28 }}>
+          <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 22, color: '#fff', textTransform: 'uppercase', marginBottom: 8 }}>Welcome, {auth.profile.display_name}</div>
+          <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 13, color: 'rgba(218,218,218,0.7)', lineHeight: 1.6 }}>
+            This is the admin landing page. Each section below maps to one
+            piece of editable content. Right now it's just placeholders —
+            the actual editors land in the next phase. You'll be able to
+            invite friends, post news, register transfers, manage merch
+            and tweak player lore all from this page.
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 18 }}>
+          {sections.map((s) => (
+            <div key={s.title} style={{
+              background: 'rgba(8,15,30,0.7)', border: '1px solid rgba(255,255,255,0.06)',
+              borderLeft: `3px solid ${s.color}`, borderRadius: 6, padding: '20px 22px',
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.title}</div>
+                <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', color: s.color, background: `${s.color}1f`, padding: '3px 8px', borderRadius: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{s.eta}</div>
+              </div>
+              <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 12, color: 'rgba(218,218,218,0.7)', lineHeight: 1.55 }}>{s.blurb}</div>
+              <button disabled style={{ alignSelf: 'flex-start', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(218,218,218,0.4)', cursor: 'not-allowed', fontFamily: 'Roboto, sans-serif', fontWeight: 700, fontSize: 10, letterSpacing: '0.18em', padding: '7px 12px', borderRadius: 3, textTransform: 'uppercase' }}>
+                COMING SOON
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 // ── BASKET PAGE ─────────────────────────────────────────────────
 const BasketPage = ({ setPage }) => {
   return (
@@ -2896,5 +3011,6 @@ export {
   LeaguePage,
   StorePage,
   AccountPage,
+  AdminPage,
   BasketPage,
 };

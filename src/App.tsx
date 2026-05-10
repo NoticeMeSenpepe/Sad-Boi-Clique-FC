@@ -10,7 +10,7 @@ import React from 'react';
 import {
   NavBar,
   HomePage, SquadPage, StatsPage, FixturesPage,
-  NewsPage, TransfersPage, LeaguePage, StorePage, AccountPage, BasketPage,
+  NewsPage, TransfersPage, LeaguePage, StorePage, AccountPage, AdminPage, BasketPage,
   PlayerProfileModal,
 } from './sbcfc';
 import Landing from './Landing';
@@ -297,6 +297,7 @@ const App: React.FC = () => {
     store:     <StorePage     tweaks={tweaks} />,
     basket:    <BasketPage    setPage={navigateTo} tweaks={tweaks} />,
     account:   <AccountPage   setPage={navigateTo} tweaks={tweaks} />,
+    admin:     <AdminPage     setPage={navigateTo} tweaks={tweaks} />,
   };
 
   // ── Landing splash gate ──
