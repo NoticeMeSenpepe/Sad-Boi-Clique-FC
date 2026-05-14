@@ -106,6 +106,37 @@ function useLivePlayers(): any[] {
   return players;
 }
 
+/** Historical character-swap log. EA gamertags persist across character
+ *  changes — `broddleeee1` was Amir Panikova until 2026-05-14, then
+ *  Dimitris Maniatis took over the same account. Matches played before
+ *  the swap date should still display the old character's name on the
+ *  scorers list / per-match player rows, while everything from the swap
+ *  date forward uses the current name (looked up live from the players
+ *  list). Add another `{ eaUser, before, historicalName }` entry if a
+ *  future swap happens; the resolver below picks the most specific
+ *  historical match by date. */
+const CHARACTER_SWAPS = [
+  { eaUser: 'broddleeee1', before: '2026-05-14T00:00:00Z', historicalName: 'Amir Panikova' },
+];
+
+/** Resolve an EA gamertag to the character name that was active in that
+ *  account at the time of a given match. Falls back to the live current
+ *  name (and finally the raw gamertag) if no historical record applies. */
+function resolveCharacterName(rawGamertag: string, livePlayers: any[], matchPlayedAt: string | null | undefined): string {
+  const key = String(rawGamertag || '').toLowerCase();
+  if (matchPlayedAt) {
+    const matchTs = new Date(matchPlayedAt).getTime();
+    if (Number.isFinite(matchTs)) {
+      for (const swap of CHARACTER_SWAPS) {
+        if (swap.eaUser.toLowerCase() !== key) continue;
+        if (matchTs < new Date(swap.before).getTime()) return swap.historicalName;
+      }
+    }
+  }
+  const live = livePlayers.find((p) => p.eaUser && String(p.eaUser).toLowerCase() === key);
+  return live?.name || rawGamertag;
+}
+
 /** Convert an ISO timestamp into a "12 minutes ago" / "3 days ago" style
  *  string, matching the prototype's existing time strings. */
 function relativeTime(iso: string): string {
@@ -1461,13 +1492,11 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
           {lastMatch && (() => {
             const col = lastMatchColor(lastMatch.result);
             const resultWord = lastMatch.result === 'W' ? 'WIN' : lastMatch.result === 'L' ? 'LOSS' : 'DRAW';
-            // Substitute Sad Boi Clique character names where we have them;
-            // opponents stay raw. Built off the live `players` list (DB-driven)
-            // rather than the hardcoded PLAYERS fallback so character swaps —
-            // e.g. broddleeee1 was Panikova, now Maniatis — appear instantly
-            // without a code change.
-            const usNameMap = new Map((players || []).filter((p) => p.eaUser).map((p) => [String(p.eaUser).toLowerCase(), p.name]));
-            const renderName = (raw) => usNameMap.get(String(raw).toLowerCase()) || raw;
+            // Character names are resolved per-match-date — so broddleeee1
+            // reads as Amir Panikova on matches before the 2026-05-14 swap
+            // and as Dimitris Maniatis from that date forward. See the
+            // CHARACTER_SWAPS constant near the top of this file.
+            const renderName = (raw) => resolveCharacterName(raw, players || [], lastMatch.playedAt);
             return (
               <div onClick={() => goToFixture(lastMatch.matchId)} className="sbc-glow-panel"
                 style={{ '--panel-color': col, marginTop: 6, maxWidth: 520,
@@ -2437,21 +2466,14 @@ const MatchReport = ({ fixture }) => {
   const isUsActive  = side === 'us';
   const switchTo = (s) => { setSide(s); setExpandedPlayer(null); };
 
-  // Build a Gamertag → character-name lookup for our club only. Opposing
-  // teams stay as their raw EA names because we have no character mapping
-  // for them. Driven off the live (DB-backed) players list rather than
-  // the hardcoded PLAYERS fallback, so character swaps like broddleeee1
-  // moving from Panikova to Maniatis flow through without a code change.
+  // Gamertag → character-name lookup for our club only. Opposing teams
+  // stay as their raw EA names because we have no character mapping for
+  // them. Resolved per match date so broddleeee1 reads as Amir Panikova
+  // for any match played before 2026-05-14 and Dimitris Maniatis from
+  // that date forward — see CHARACTER_SWAPS at the top of this file.
   const livePlayers = useLivePlayers();
-  const usNameMap = React.useMemo(() => {
-    const m = new Map();
-    for (const p of livePlayers) {
-      if (p.eaUser) m.set(String(p.eaUser).toLowerCase(), p.name);
-    }
-    return m;
-  }, [livePlayers]);
   const displayName = (rawName, sideIsUs) =>
-    sideIsUs ? (usNameMap.get(String(rawName).toLowerCase()) || rawName) : rawName;
+    sideIsUs ? resolveCharacterName(rawName, livePlayers, fixture.playedAt) : rawName;
 
   // Crest visuals:
   //   - For Sad Boi Clique we always use our locally-stored logo.
