@@ -1302,7 +1302,7 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
   }, []);
 
   const signings = [
-  { player: players.find((p) => p.id === 'panikova'),    image: '/uploads/pasted-1777415983890-0.png', caption: 'FROM FERGANA VALLEY, UZBEKISTAN' },
+  { player: players.find((p) => p.id === 'maniatis'),    image: '/uploads/maniatis.png',               caption: 'THE EXILE · FROM A SHED IN LINCOLNSHIRE' },
   { player: players.find((p) => p.id === 'gymskin'),     image: '/uploads/pasted-1777416552965-0.png', caption: 'AURA PULSE ACTIVATED' },
   { player: players.find((p) => p.id === 'karavavov'),   image: '/uploads/Karavavov.png',              caption: 'THE MOLDOVAN TRICKSTER' },
   { player: players.find((p) => p.id === 'ricciardo'),   image: '/uploads/Ricciardo.png',              caption: 'THE HONEYBADGER. F1 TO FOOTBALL.' },
@@ -2750,9 +2750,15 @@ const NewsArticleView = ({ article, onBack }) => {
       </div>
       <RainbowBar />
       <div style={{ padding: '40px 64px 80px', maxWidth: 820, margin: '0 auto' }}>
-        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 18, color: 'rgba(218,218,218,0.85)', lineHeight: 1.65, marginBottom: 28, fontWeight: 500 }}>{article.summary}</div>
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 18, color: 'rgba(218,218,218,0.85)', lineHeight: 1.65, marginBottom: 28, fontWeight: 500, whiteSpace: 'pre-wrap' }}>{article.summary}</div>
         <div style={{ width: 60, height: 3, background: article.tagColor, marginBottom: 28 }} />
-        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 15, color: 'rgba(218,218,218,0.7)', lineHeight: 1.85, fontStyle: 'italic' }}>{article.body}</div>
+        {/* Article body: `white-space: pre-wrap` preserves the line and
+            paragraph breaks the admin typed in the Admin → News form
+            (browsers otherwise collapse all whitespace, which was making
+            multi-paragraph articles render as one solid block).
+            `text-align: justify` matches the magazine-style spread used
+            for the rest of the long-form reads on the site. */}
+        <div style={{ fontFamily: 'Roboto, sans-serif', fontSize: 15, color: 'rgba(218,218,218,0.7)', lineHeight: 1.85, fontStyle: 'italic', whiteSpace: 'pre-wrap', textAlign: 'justify' }}>{article.body}</div>
         <div style={{ marginTop: 48, padding: '20px 24px', background: 'rgba(8,15,30,0.7)', border: `1px solid ${article.tagColor}33`, borderLeft: `3px solid ${article.tagColor}`, borderRadius: 4 }}>
           <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 11, color: article.tagColor, letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: 6 }}>Filed under</div>
           <div style={{ fontFamily: 'Anton, sans-serif', fontSize: 18, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{article.kicker.toLowerCase() === article.tag.toLowerCase() ? article.tag : `${article.kicker} · ${article.tag}`}</div>
