@@ -1181,40 +1181,26 @@ const StoreCarousel = ({ loop, setPage }) => {
   );
 };
 
-/** Two-line clamped paragraph; if the source string overflows, an
- *  italic "…continue reading" prompt appears below to signal the panel
- *  is clickable and there's more to read. Used by the homepage rotating
- *  hero card. Truncation is detected by measuring scrollHeight against
- *  clientHeight after layout, so it works across font / viewport
- *  changes (e.g. on resize). */
+/** Two-line clamped paragraph on the homepage rotating hero card. The
+ *  text container reserves exactly 2 lines of space (em-relative) so
+ *  rotating between short and long summaries doesn't shift the panel
+ *  layout below it, and an italic "…continue reading" prompt always
+ *  appears underneath to signal that the whole card is clickable. */
 const TruncatedSubtext = ({ text }) => {
-  const ref = React.useRef(null);
-  const [truncated, setTruncated] = React.useState(false);
-  React.useLayoutEffect(() => {
-    setTruncated(false);
-    if (!ref.current) return;
-    // Allow the new text to settle into the DOM, then compare. scrollHeight
-    // exceeds clientHeight whenever the line-clamp had to chop something.
-    const id = window.requestAnimationFrame(() => {
-      const el = ref.current;
-      if (!el) return;
-      setTruncated(el.scrollHeight > el.clientHeight + 1);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [text]);
   return (
     <div>
-      <div ref={ref} style={{
+      <div style={{
         fontFamily: 'Roboto, sans-serif', fontSize: 14, fontWeight: 300, color: 'rgba(218,218,218,0.75)', maxWidth: 520, lineHeight: 1.55,
         display: '-webkit-box', WebkitLineClamp: 2 as any, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
+        // Reserve 2 lines worth of space (2 × 1.55em = 3.1em) so short
+        // summaries don't compress the layout when the headline rotates.
+        height: '3.1em',
       }}>{text}</div>
-      {truncated && (
-        <div style={{
-          marginTop: 6,
-          fontFamily: 'Roboto, sans-serif', fontSize: 12, fontStyle: 'italic',
-          color: 'var(--accent)', letterSpacing: '0.04em',
-        }}>…continue reading →</div>
-      )}
+      <div style={{
+        marginTop: 6,
+        fontFamily: 'Roboto, sans-serif', fontSize: 12, fontStyle: 'italic',
+        color: 'var(--accent)', letterSpacing: '0.04em',
+      }}>…continue reading →</div>
     </div>
   );
 };
@@ -1366,14 +1352,22 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
               >›</button>
             </div>
           </div>
-          {/* Rotating headline + image container. Height is now driven by
-              the image (when present) instead of being fixed at 200px, so
-              the headline photo sits naturally beneath the text. */}
-          <div onClick={() => { try { localStorage.setItem('sbc_focus_news', String(h.id)); } catch (e) {} setPage('news'); }} style={{ position: 'relative', minHeight: 220, marginBottom: 14, cursor: 'pointer' }}>
+          {/* Rotating headline + image container. The text area's height is
+              reserved (3 lines for headline, 2 for summary, plus the
+              "continue reading" link) using em-based values so the image
+              and every panel below it stay at a consistent position
+              regardless of which headline is currently being shown. */}
+          <div onClick={() => { try { localStorage.setItem('sbc_focus_news', String(h.id)); } catch (e) {} setPage('news'); }} style={{ position: 'relative', marginBottom: 14, cursor: 'pointer' }}>
             <div key={headlineIdx} style={{ display: 'flex', flexDirection: 'column', gap: 12, animation: 'fadeInHeadline 0.5s ease' }}>
               <div className="sbc-glow-heading" style={{
                 fontFamily: 'Anton, sans-serif', fontSize: 'clamp(28px, 4.2vw, 54px)', lineHeight: 0.95, color: '#fff', maxWidth: 820, textTransform: 'uppercase',
-                display: '-webkit-box', WebkitLineClamp: 2 as any, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
+                display: '-webkit-box', WebkitLineClamp: 3 as any, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
+                // Reserve 3 lines worth of space (lineHeight 0.95 × 3 = 2.85em)
+                // so a 1-line headline doesn't pull the panel below upward,
+                // and a 3-line one (e.g. "PANIKOVA WALKS — TALISMANIC
+                // STRIKER LEAVES SAD BOI CLIQUE WITH IMMEDIATE EFFECT") has
+                // room to render fully instead of clipping mid-word.
+                height: '2.85em',
               }}>{h.text}</div>
               <TruncatedSubtext text={h.sub} />
               {/* "...continue reading" hint sits OUTSIDE the clamped div so
@@ -1511,7 +1505,11 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
 
           {/* RIGHT: Player Spotlight in hero */}
           {(() => {
-            const spotPlayers = (players || []).filter((p) => p.image);
+            // Spotlight = current squad only. Players carrying the
+            // 'LEFT CLUB' tag (e.g. Panikova post-departure) are kept on
+            // the Squad page for lore browsing but should not appear in
+            // the homepage rotation.
+            const spotPlayers = (players || []).filter((p) => p.image && !(p.tags || []).some((t) => /LEFT CLUB/i.test(t)));
             const [spIdx, setSpIdx] = React.useState(0);
             const [spHov, setSpHov] = React.useState(false);
             // Touch tracking for the swipe gesture (mobile). The same handlers

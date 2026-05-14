@@ -142,17 +142,19 @@ function useCustomCursor() {
 
 // ── Chaos Feed ticker ──
 const CHAOS_ITEMS = [
-  { player: 'PANIKOVA',  msg: 'Arrived at training wearing sunglasses. Indoors. At night.', color: '#E4002B' },
+  { player: 'MANIATIS',  msg: '"Είναι αυτό που είναι" — translation services have asked him to stop.', color: '#1e4d8c' },
   { player: 'GYMSKIN',   msg: 'Coffee refused. Thermometer reading: 94.8°. Session delayed 11 minutes.', color: '#9b5de5' },
   { player: 'RICCIARDO', msg: 'Attempted a cross. The ball went backwards. Investigation ongoing.', color: '#00c8ff' },
+  { player: 'MANIATIS',  msg: 'Hit a half-volley against a stone wall. The wall has issued a statement.', color: '#1e4d8c' },
   { player: 'RFK JR',    msg: 'Brought unidentified smoothie to training. Team physio taking notes.', color: '#e9c46a' },
   { player: 'RUBIO',     msg: 'Fourth water break requested. Performance imminent.', color: '#f4a261' },
   { player: 'DONNY P',   msg: '"That shot was on target actually." GPS confirms it was not.', color: '#e9c46a' },
   { player: 'KARAVAVOV', msg: 'Attempted no-look pass. Lost possession. Declared it intentional.', color: '#f4a261' },
+  { player: 'MANIATIS',  msg: 'Arrived at training in a raincoat. Has refused to remove it. It is sunny.', color: '#1e4d8c' },
   { player: 'DIAKITE',   msg: 'Spotted in a car park near the stadium. DO NOT APPROACH.', color: '#E4002B' },
   { player: 'HEGSETH',   msg: 'Providing live commentary on his own performance. 89th minute. Again.', color: '#e63946' },
   { player: 'NOEM',      msg: 'Yellow card. No apology issued. Club statement: "We support this."', color: '#9b5de5' },
-  { player: 'PANIKOVA',  msg: 'Claims he saw signs in a fern again. Tactical formation. We checked. It was a fern.', color: '#E4002B' },
+  { player: 'PANIKOVA',  msg: 'Spotted in a Lincolnshire layby. Cones nearby. Will not comment.', color: '#ff2244' },
   { player: 'GYMSKIN',   msg: 'Aura Pulse activated. Coffee at exactly 95°. Team immediately 34% better.', color: '#9b5de5' },
 ];
 

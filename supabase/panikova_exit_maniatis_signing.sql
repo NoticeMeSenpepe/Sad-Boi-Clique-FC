@@ -158,7 +158,7 @@ The club legal team has been informed. The cones, currently still missing, will 
 
 #UpTheClique #HereWeGo',
        'TRANSFER', '#1e4d8c', 'Transfer Window · Here We Go',
-       '/uploads/maniatis.png',
+       '/uploads/maniatis-square.png',
        'Transfer Desk', true);
   end if;
 end $body$;
