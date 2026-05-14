@@ -1461,8 +1461,12 @@ const HomePage = ({ setPage, setSelectedPlayer }) => {
           {lastMatch && (() => {
             const col = lastMatchColor(lastMatch.result);
             const resultWord = lastMatch.result === 'W' ? 'WIN' : lastMatch.result === 'L' ? 'LOSS' : 'DRAW';
-            // Substitute Sad Boi Clique character names where we have them; opponents stay raw.
-            const usNameMap = new Map(PLAYERS.filter((p) => p.eaUser).map((p) => [String(p.eaUser).toLowerCase(), p.name]));
+            // Substitute Sad Boi Clique character names where we have them;
+            // opponents stay raw. Built off the live `players` list (DB-driven)
+            // rather than the hardcoded PLAYERS fallback so character swaps —
+            // e.g. broddleeee1 was Panikova, now Maniatis — appear instantly
+            // without a code change.
+            const usNameMap = new Map((players || []).filter((p) => p.eaUser).map((p) => [String(p.eaUser).toLowerCase(), p.name]));
             const renderName = (raw) => usNameMap.get(String(raw).toLowerCase()) || raw;
             return (
               <div onClick={() => goToFixture(lastMatch.matchId)} className="sbc-glow-panel"
@@ -2435,14 +2439,17 @@ const MatchReport = ({ fixture }) => {
 
   // Build a Gamertag → character-name lookup for our club only. Opposing
   // teams stay as their raw EA names because we have no character mapping
-  // for them.
+  // for them. Driven off the live (DB-backed) players list rather than
+  // the hardcoded PLAYERS fallback, so character swaps like broddleeee1
+  // moving from Panikova to Maniatis flow through without a code change.
+  const livePlayers = useLivePlayers();
   const usNameMap = React.useMemo(() => {
     const m = new Map();
-    for (const p of PLAYERS) {
+    for (const p of livePlayers) {
       if (p.eaUser) m.set(String(p.eaUser).toLowerCase(), p.name);
     }
     return m;
-  }, []);
+  }, [livePlayers]);
   const displayName = (rawName, sideIsUs) =>
     sideIsUs ? (usNameMap.get(String(rawName).toLowerCase()) || rawName) : rawName;
 
